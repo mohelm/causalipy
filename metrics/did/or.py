@@ -6,6 +6,7 @@ from functools import cached_property
 # Third party
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 
 # First party
 from metrics.ols import Ols
@@ -17,7 +18,47 @@ class OrDid:
             data_treated["outcome"].values.reshape(-1, 1) - self.or_model.predict(data_treated)
         ).mean()
 
+    def _influence_function_treatment_component(self, data: pd.DataFrame) -> NDArray:
+        mean = (data["outcome"] * data["treatment_status"]).mean() / data["treatment_status"].mean()
+        return (
+            data["treatment_status"] * (data["outcome"] - mean) / data["treatment_status"].mean()
+        ).values.reshape(-1, 1)
+
+    def _influence_function_control_component_1(self, data: pd.DataFrame) -> NDArray:
+        preds = self.or_model.predict(data)
+        mean = (preds * data["treatment_status"].values.reshape(-1, 1)).mean() / (
+            data["treatment_status"]
+        ).mean()
+        return (data["treatment_status"].values.reshape(-1, 1)) * (preds - mean)
+
+    def _influence_function_control_component_2(self, data: pd.DataFrame) -> NDArray:
+        X = self.or_model.get_design_matrix(data)
+        n_treatment = (data["treatment_status"] == 1).sum()
+        # TODO: careful here: you are relying on a certain ordering of treatment and control obs in the dta
+        # I thought there was also another issue but i forgot.
+        alr_or = (
+            len(data)
+            * np.r_[
+                np.zeros((n_treatment, X.shape[1])), self.or_model.asymptotic_linear_representation
+            ]
+        )
+        return (alr_or @ (X * data["treatment_status"].values.reshape(-1, 1)).mean(axis=0)).reshape(
+            -1, 1
+        )
+
+    def _influence_function_control_component(self, data: pd.DataFrame) -> NDArray:
+        return (
+            self._influence_function_control_component_1(data)
+            + self._influence_function_control_component_2(data)
+        ) / (data["treatment_status"]).mean()
+
+    def _compute_influence_function(self, data) -> NDArray:
+        return self._influence_function_treatment_component(
+            data
+        ) - self._influence_function_control_component(data)
+
     def __init__(self, formula: str, data: pd.DataFrame):
+
         # Remark: give in a dataframe with two time periods
         max_time_period = data["time_period"].max()  # noqa
         min_time_period = data["time_period"].min()  # noqa
@@ -29,43 +70,13 @@ class OrDid:
         self.n_obs = data.shape[0]
 
         data_control = data.query("treatment_status==0")
-        n_control = data_control.shape[0]
         self.or_model = Ols(formula, data_control)
-
-        treatment_prop = data["treatment_status"].mean()
 
         # Treatment effect
         data_treated = data.query("treatment_status==1")
         self._att = self._compute_att(data_treated)
 
-        # Compute the influece functon
-        alr_or = self.or_model.asymptotic_linear_representation
-
-        n_treated = data_treated.shape[0]
-        outcome_treated = data_treated["outcome"].values.reshape(-1, 1)
-        self._influence_function_treat_other = (
-            outcome_treated - outcome_treated.mean()
-        ) / treatment_prop
-        outcome_control = self.or_model.predict(data_treated)
-
-        self._influence_function = (
-            np.r_[self._influence_function_treat_other, np.zeros((n_control, 1))]
-            - (
-                np.r_[outcome_control - outcome_control.mean(), np.zeros((n_control, 1))]
-                + np.r_[
-                    np.zeros((n_treated, 1)),
-                    (
-                        len(data)
-                        * alr_or
-                        @ (
-                            self.or_model.get_design_matrix(data_treated).mean(axis=0)
-                            * treatment_prop
-                        )
-                    ).reshape(-1, 1),
-                ]
-            )
-            / treatment_prop
-        )
+        self._influence_function = self._compute_influence_function(data)
 
     @cached_property
     def standard_errors(self) -> float:
