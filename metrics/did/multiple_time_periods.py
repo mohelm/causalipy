@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# Core Library
+from functools import cached_property
+
 # Third party
 import numpy as np
 import pandas as pd
@@ -7,7 +10,7 @@ from numpy.typing import NDArray
 
 # First party
 from metrics.ols import ols
-from metrics.logistic_regression import lr
+from metrics.logistic_regression import LogisticRegression, lr
 
 
 def simulate_data(
@@ -133,6 +136,70 @@ def multi_period_did_ipw(data: pd.DataFrame):
             print(estimate)
 
 
+class IpwDid:
+    def __init__(self, formula: str, data: pd.DataFrame):
+        max_time_period = data["time_period"].max()
+        min_time_period = data["time_period"].min()
+        data.set_index("id", inplace=True)
+
+        data_selection_model = data.query("time_period == @max_time_period")
+        selection_model = LogisticRegression(formula, data_selection_model)
+        difference = (
+            data.query("time_period == @max_time_period")["outcome"].subtract(
+                data.query("time_period==@min_time_period")["outcome"]
+            )
+        ).values.reshape(-1, 1)
+
+        self.odds = selection_model.predict_odds(data_selection_model)
+        self.treatment_status = data_selection_model["treatment_status"].values.reshape(-1, 1)
+        self.control_weights = self.odds * (1 - self.treatment_status)
+        self.treatment_status_mean = self.treatment_status.mean()
+        self.control_weights_mean = self.control_weights.mean()
+
+        # Treatment effect
+        self._weights_difference_control = (
+            difference * self.control_weights / self.control_weights_mean
+        )
+        self._weights_difference_treatment = (
+            difference * self.treatment_status / self.treatment_status_mean
+        )
+        self._att = (self._weights_difference_treatment - self._weights_difference_control).mean()
+
+        # Variance
+        alr_ps = selection_model.score @ selection_model.vce
+
+        self.influence_function = difference * (self.treatment_status - self.control_weights) - (
+            (
+                alr_ps
+                @ (
+                    self.control_weights
+                    * difference
+                    * selection_model.get_design_matrix(data_selection_model)
+                ).mean(axis=0)
+            ).reshape(-1, 1)
+        )
+
+        self.n_units = data_selection_model.shape[0]
+
+    @cached_property
+    def standard_errors(self) -> float:
+        return np.std(self.influence_function) / np.sqrt(self.n_units)
+
+    @cached_property
+    def att(self) -> float:
+        return self._att
+
+
+class OrDid:
+    def __init__(self, formula: str, data: pd.DataFrame):
+        ...
+
+
+class DrDid:
+    def __init__(self, formula: str, data: pd.DataFrame):
+        ...
+
+
 def multi_period_did(
     outcome_regression: str | None, selection_regression: str | None, data: pd.DataFrame
 ):
@@ -156,6 +223,7 @@ def multi_period_did(
                 (data["treatment_status"] == 1) & (data["group"] == g) & (data["time_period"] == t)
             ) | ((data["treatment_status"] == 0) & (data["time_period"] == t))
 
+            # Only depends on G
             mask_2 = (
                 (data["treatment_status"] == 1)
                 & (data["group"] == g)
@@ -242,7 +310,15 @@ if __name__ == "__main__":
 
     # multi_period_did_ipw(data=data)
 
-    multi_period_did("outcome ~ control", "treatment_status ~ control", data)
+    # multi_period_did("outcome ~ control", "treatment_status ~ control", data)
+
+    data = data.query("time_period in (1, 2)")
+    ipw_did = IpwDid("treatment_status ~ control", data)
+
+    # First party
+    from metrics.logistic_regression import LogisticRegression
+
+    lr = LogisticRegression("treatment_status~control", data)
 
     # # Is group observed here?
 

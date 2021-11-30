@@ -1,3 +1,6 @@
+# Core Library
+from functools import cached_property
+
 # Third party
 import numpy as np
 import pandas as pd
@@ -88,3 +91,36 @@ def lr(formula: str, data: pd.DataFrame) -> LrResults:
     res = _lr(y_dmat, X_dmat)
     neg_ll, neg_jac, neg_hess = lll(res.x, y_dmat, X_dmat, return_hess=True)
     return LrResults(res.x, X_dmat.design_info, hess=-neg_hess, score=-neg_jac)
+
+
+class LogisticRegression:
+    def __init__(self, formula: str, data: pd.DataFrame):
+        y_dmat, X_dmat = dmatrices(formula, data=data)
+        self._x_design_info: DesignInfo = X_dmat.design_info
+
+        # Estimate the model
+        res = _lr(y_dmat, X_dmat)
+        neg_ll, neg_jac, neg_hess = lll(res.x, y_dmat, X_dmat, return_hess=True)
+
+        self.coefficients = res.x
+        self.log_likelihood = -neg_ll
+        self.jacobian = -neg_jac
+        self.hessian = -neg_hess
+        self.score = (y_dmat - self.predict_proba(data)) * X_dmat
+
+        self.n_observations = X_dmat.shape[0]
+
+    def predict_proba(self, X: pd.DataFrame) -> NDArray[np.float_]:
+        return _logistic(self.get_design_matrix(X) @ self.coefficients).reshape(-1, 1)
+
+    def predict_odds(self, X: pd.DataFrame) -> NDArray[np.float_]:
+        probabilities = self.predict_proba(X)
+        return (probabilities / (1 - probabilities)).reshape(-1, 1)
+
+    @cached_property
+    def vce(self) -> NDArray[np.float_]:
+        # TODO: figure out if this is the only VCE
+        return np.linalg.inv(self.hessian) * self.n_observations
+
+    def get_design_matrix(self, X: pd.DataFrame) -> NDArray[np.float_]:
+        return build_design_matrices([self._x_design_info], X)[0]

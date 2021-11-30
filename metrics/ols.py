@@ -33,3 +33,26 @@ def _ols(
 def ols(formula: str, data: pd.DataFrame) -> OlsResults:
     y_dmat, X_dmat = dmatrices(formula, data=data)
     return OlsResults(*_ols(y_dmat, X_dmat), X_dmat.design_info)  # type: ignore
+
+
+class Ols:
+    def __init__(self, formula: str, data: pd.DataFrame):
+        y_dmat, X_dmat = dmatrices(formula, data=data)
+
+        self.coefficients, _ = _ols(y_dmat, X_dmat)
+        self._x_design_info: DesignInfo = X_dmat.design_info
+
+        self.residuals = X_dmat @ self.coefficients
+
+        self.hessian = X_dmat.T @ X_dmat
+        self.score = (y_dmat - self.predict(data)) * X_dmat
+
+        self.hessian_inv = np.linalg.inv(self.hessian)
+
+        self.asymptotic_linear_representation = self.score @ self.hessian_inv
+
+    def get_design_matrix(self, X: pd.DataFrame) -> NDArray[np.float_]:
+        return build_design_matrices([self._x_design_info], X)[0]
+
+    def predict(self, X: pd.DataFrame) -> NDArray[np.float_]:
+        return (self.get_design_matrix(X) @ self.coefficients).reshape(-1, 1)
