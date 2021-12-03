@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 
 # First party
 from metrics.ols import Ols
-from metrics.custom_types import NDArrayOfFloats, MaybeNDArrayOfFloats
+from metrics.custom_types import MaybeString, NDArrayOfFloats, MaybeNDArrayOfFloats
 from metrics.logistic_regression import LogisticRegression
 
 
@@ -28,13 +28,12 @@ class Method(str, Enum):
     oreg = "or"
 
 
-def _assign_estimation_method(formula_or: str | None, formula_ipw: str | None) -> Method:
+def _assign_estimation_method(formula_or: MaybeString, formula_ipw: MaybeString) -> Method:
     if formula_or and formula_ipw:
         return Method.dr
-    elif formula_or:
+    if formula_or:
         return Method.oreg
-    else:
-        return Method.ipw
+    return Method.ipw
 
 
 class DoublyRobustDid:
@@ -109,7 +108,7 @@ class DoublyRobustDid:
             outcome, preds, X, n_treated
         )
 
-    def __init__(self, formula_or: str | None, formula_ipw: str | None, data: pd.DataFrame):
+    def __init__(self, formula_or: MaybeString, formula_ipw: MaybeString, data: pd.DataFrame):
 
         self.method = _assign_estimation_method(formula_or, formula_ipw)
 
@@ -117,7 +116,7 @@ class DoublyRobustDid:
         late_period = data["time_period"].max()
         data = _prepare_data(data, late_period)
         n_treated = data.query("treatment_status==1").shape[0]
-        outcome: NDArray[np.float_] = data["outcome"].values.reshape(-1, 1)
+        outcome: NDArrayOfFloats = data["outcome"].values.reshape(-1, 1)
         self.n_units = data.shape[0]
 
         self.selection_model = LogisticRegression(formula_ipw, data) if formula_ipw else None
@@ -150,32 +149,3 @@ class DoublyRobustDid:
 
     def standard_errors(self) -> float:
         return np.std(self._influence_function) / np.sqrt(self.n_units)
-
-
-if __name__ == "__main__":
-    data = pd.read_feather("/Users/moritz.helm/.cache/py-did/sim-ds.feather").rename(
-        columns={
-            "X": "control",
-            "treat": "treatment_status",
-            "period": "time_period",
-            "G": "group",
-            "Y": "outcome",
-        }
-    )
-    for col in ["treatment_status", "time_period", "group"]:
-        data[col] = data[col].astype(int)
-
-    data = data.query("time_period in (3, 4)")
-
-    print()
-    print("DR")
-    dr_did = DoublyRobustDid("outcome~control", "treatment_status ~ control", data)
-    print(dr_did.att, dr_did.standard_errors())
-
-    print("IPW")
-    ipw_did = DoublyRobustDid(None, "treatment_status ~ control", data)
-    print(ipw_did.att, ipw_did.standard_errors())
-
-    print("OR")
-    or_did = DoublyRobustDid("outcome~control", None, data)
-    print(or_did.att, or_did.standard_errors())

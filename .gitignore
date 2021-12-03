@@ -115,7 +115,7 @@ local_storage/
 .idea
 
 #data
-*.feather
+# *.feather
 *.npz
 
 #vim
