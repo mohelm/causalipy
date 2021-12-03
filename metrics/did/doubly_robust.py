@@ -77,7 +77,7 @@ class DoublyRobustDid:
         X: NDArrayOfFloats,
         n_treated: int,
     ) -> NDArrayOfFloats:
-        component_3 = self._att_control - self._weights_control * self._eta_control
+        component_1 = self._att_control - self._weights_control * self._eta_control
 
         if self.method != Method.ipw:
             or_model = cast(Ols, self.or_model)
@@ -92,11 +92,11 @@ class DoublyRobustDid:
             component_2 = (alr @ m2).reshape(-1, 1)
 
         if self.method == Method.dr:
-            return (component_3 + component_2 - component_3) / self._weights_control.mean()
+            return (component_1 + component_2 - component_3) / self._weights_control.mean()
 
         if self.method == Method.oreg:
-            return (component_3 + component_3) / self._weights_control.mean()
-        return (component_3 + component_2) / self._weights_control.mean()
+            return (component_1 + component_3) / self._weights_control.mean()
+        return (component_1 + component_2) / self._weights_control.mean()
 
     def _get_if(
         self,
@@ -166,11 +166,16 @@ if __name__ == "__main__":
         data[col] = data[col].astype(int)
 
     data = data.query("time_period in (3, 4)")
+
+    print()
+    print("DR")
     dr_did = DoublyRobustDid("outcome~control", "treatment_status ~ control", data)
     print(dr_did.att, dr_did.standard_errors())
 
+    print("IPW")
     ipw_did = DoublyRobustDid(None, "treatment_status ~ control", data)
     print(ipw_did.att, ipw_did.standard_errors())
 
+    print("OR")
     or_did = DoublyRobustDid("outcome~control", None, data)
     print(or_did.att, or_did.standard_errors())
