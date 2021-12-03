@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Core Library
 from enum import Enum
-from typing import Union, cast
+from typing import cast
 
 # Third party
 import numpy as np
@@ -11,11 +11,8 @@ from numpy.typing import NDArray
 
 # First party
 from metrics.ols import Ols
-from metrics.custom_types import NDArrayOfFloats
+from metrics.custom_types import NDArrayOfFloats, MaybeNDArrayOfFloats
 from metrics.logistic_regression import LogisticRegression
-
-MaybeNDArrayOfFloats = Union[NDArrayOfFloats, None]
-MaybeInt = Union[int, None]
 
 
 def _prepare_data(data: pd.DataFrame, late_period: int):
@@ -26,9 +23,9 @@ def _prepare_data(data: pd.DataFrame, late_period: int):
 
 
 class Method(str, Enum):
-    dr = "doubly_robust"
-    ipw = "inverse_probability_weighting"
-    oreg = "outcome_regression"
+    dr = "dr"
+    ipw = "ipw"
+    oreg = "or"
 
 
 def _assign_estimation_method(formula_or: str | None, formula_ipw: str | None) -> Method:
@@ -42,34 +39,25 @@ def _assign_estimation_method(formula_or: str | None, formula_ipw: str | None) -
 
 class DoublyRobustDid:
     def _get_control_diff_in_diff(
-        self, outcome: NDArray[np.float_], preds: NDArray[np.float_] | None
+        self, outcome: NDArrayOfFloats, preds: MaybeNDArrayOfFloats
     ) -> NDArray[np.float_]:
         if self.method == Method.dr:
-            preds = cast(NDArray[np.float_], preds)
-            return outcome - preds
+            return outcome - cast(NDArrayOfFloats, preds)
         if self.method == Method.oreg:
-            preds = cast(NDArray[np.float_], preds)
-            return preds
+            return cast(NDArrayOfFloats, preds)
         return outcome
 
     def _get_treatment_diff_in_diff(
-        self, outcome: NDArray[np.float_], preds: NDArray[np.float_] | None
-    ) -> NDArray[np.float_]:
-        if self.method == Method.dr:
-            preds = cast(NDArray[np.float_], preds)
-            return outcome - preds
-        if self.method == Method.oreg:
-            return outcome
-        return outcome
+        self, outcome: NDArrayOfFloats, preds: MaybeNDArrayOfFloats
+    ) -> NDArrayOfFloats:
+        return outcome - cast(NDArrayOfFloats, preds) if self.method == Method.dr else outcome
 
-    def _get_treatment_if(
-        self, X: NDArray[np.float_] | None, n_treated: int | None
-    ) -> NDArray[np.float_]:
-        component1 = self._att_treated - self._weights_treated * self._eta_treated
+    def _get_treatment_if(self, X: NDArrayOfFloats, n_treated: int) -> NDArrayOfFloats:
+        component_1 = self._att_treated - self._weights_treated * self._eta_treated
         if self.method != Method.dr:
-            return component1 / self._weights_treated.mean()
+            return component_1 / self._weights_treated.mean()
 
-        X = cast(NDArray[np.float_], X)
+        X = cast(NDArrayOfFloats, X)
         n_treated = cast(int, n_treated)
         or_model = cast(Ols, self.or_model)
         # TODO: careful here, you assume a certain structure of data.
@@ -78,7 +66,7 @@ class DoublyRobustDid:
             * np.r_[np.zeros((n_treated, X.shape[1])), or_model.asymptotic_linear_representation]
         )
         return (
-            component1 - (alr_or @ (self._weights_treated * X).mean(axis=0)).reshape(-1, 1)
+            component_1 - (alr_or @ (self._weights_treated * X).mean(axis=0)).reshape(-1, 1)
         ) / self._weights_treated.mean()
 
     def _get_control_if(
@@ -87,8 +75,8 @@ class DoublyRobustDid:
         preds: MaybeNDArrayOfFloats,
         X: NDArrayOfFloats,
         n_treated: int,
-    ) -> NDArray[np.float_]:
-        component1 = self._att_control - self._weights_control * self._eta_control
+    ) -> NDArrayOfFloats:
+        component_3 = self._att_control - self._weights_control * self._eta_control
 
         if self.method != Method.ipw:
             alr_or = (
@@ -98,21 +86,21 @@ class DoublyRobustDid:
                     self.or_model.asymptotic_linear_representation,
                 ]
             )
-            component_2 = alr_or @ ((self._weights_control * X).mean(axis=0)).reshape(-1, 1)
+            component_3 = alr_or @ ((self._weights_control * X).mean(axis=0)).reshape(-1, 1)
 
         if self.method != Method.oreg:
             alr = self.selection_model.score @ self.selection_model.vce
             inner = outcome - self._eta_control
             inner = inner if self.method == Method.ipw else inner - preds
             m2 = (self._weights_control * inner * X).mean(axis=0)
-            component_3 = (alr @ m2).reshape(-1, 1)
+            component_2 = (alr @ m2).reshape(-1, 1)
 
         if self.method == Method.dr:
-            return (component1 + component_3 - component_2) / self._weights_control.mean()
+            return (component_3 + component_2 - component_3) / self._weights_control.mean()
 
         if self.method == Method.oreg:
-            return (component1 + component_2) / self._weights_control.mean()
-        return (component1 + component_3) / self._weights_control.mean()
+            return (component_3 + component_3) / self._weights_control.mean()
+        return (component_3 + component_2) / self._weights_control.mean()
 
     def _get_if(
         self,
