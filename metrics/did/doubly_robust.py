@@ -52,19 +52,20 @@ class DoublyRobustDid:
     ) -> NDArrayOfFloats:
         return outcome - cast(NDArrayOfFloats, preds) if self.method == Method.dr else outcome
 
+    def _get_alr_or_model(self, X: NDArrayOfFloats, model: Ols, n_treated: int) -> NDArrayOfFloats:
+        # TODO: careful here, you assume a certain structure of data.
+        return (
+            len(X)
+            * np.r_[np.zeros((n_treated, X.shape[1])), model.asymptotic_linear_representation]
+        )
+
     def _get_treatment_if(self, X: NDArrayOfFloats, n_treated: int) -> NDArrayOfFloats:
         component_1 = self._att_treated - self._weights_treated * self._eta_treated
         if self.method != Method.dr:
             return component_1 / self._weights_treated.mean()
 
-        X = cast(NDArrayOfFloats, X)
-        n_treated = cast(int, n_treated)
         or_model = cast(Ols, self.or_model)
-        # TODO: careful here, you assume a certain structure of data.
-        alr_or = (
-            len(X)
-            * np.r_[np.zeros((n_treated, X.shape[1])), or_model.asymptotic_linear_representation]
-        )
+        alr_or = self._get_alr_or_model(X, or_model, n_treated)
         return (
             component_1 - (alr_or @ (self._weights_treated * X).mean(axis=0)).reshape(-1, 1)
         ) / self._weights_treated.mean()
@@ -79,13 +80,8 @@ class DoublyRobustDid:
         component_3 = self._att_control - self._weights_control * self._eta_control
 
         if self.method != Method.ipw:
-            alr_or = (
-                len(X)
-                * np.r_[
-                    np.zeros((n_treated, X.shape[1])),
-                    self.or_model.asymptotic_linear_representation,
-                ]
-            )
+            or_model = cast(Ols, self.or_model)
+            alr_or = self._get_alr_or_model(X, or_model, n_treated)
             component_3 = alr_or @ ((self._weights_control * X).mean(axis=0)).reshape(-1, 1)
 
         if self.method != Method.oreg:
