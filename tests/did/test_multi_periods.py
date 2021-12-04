@@ -30,6 +30,7 @@ class FakeDoublyRobustDid:
     def __init__(self, formula_or, formular_ipw, data):
         pass
 
+    @property
     def att(self):
         return rng.random()
 
@@ -43,9 +44,9 @@ def test_multi_period_did_summary(mocker, dataset):
 
     all_groups = dataset.group.unique()
     groups = np.delete(all_groups, np.where(all_groups == 0))
-    time_periods = dataset.time_period.unique()
+    time_periods = np.sort(dataset.time_period.unique())[1:]
 
-    combinations = ((g, t) for g, t in product(groups, time_periods) if g <= t)
+    combinations = ((g, t) for g, t in product(groups, time_periods))
     expected_index = (
         pd.MultiIndex.from_tuples(combinations).rename(["group", "time_period"]).sort_values()
     )

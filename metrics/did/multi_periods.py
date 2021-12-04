@@ -15,12 +15,13 @@ from metrics.did.doubly_robust import DoublyRobustDid
 class MultiPeriodDid:
     def __init__(self, formula_or: str | None, formula_ipw: str | None, data: pd.DataFrame):
         groups = np.sort(data.group.unique())[1:]
-        time_periods = np.sort(data.time_period.unique())
+        time_periods = np.sort(data.time_period.unique())[1:]
 
-        combinations = ((g, t) for (g, t) in product(groups, time_periods) if g <= t)
+        combinations = ((g, t) for (g, t) in product(groups, time_periods))
 
         def _estimate_model(group: int, time: int) -> DoublyRobustDid:
-            current_data = data.query("group in (0,@group)  and time_period in (@group-1,@time)")
+            early_tp = group - 1 if group <= time else time - 1  # noqa
+            current_data = data.query("group in (0,@group)  and time_period in (@early_tp,@time)")
             return DoublyRobustDid(formula_or, formula_ipw, current_data)
 
         self._estimates = {(g, t): _estimate_model(g, t) for g, t in combinations}
