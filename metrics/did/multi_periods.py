@@ -18,7 +18,7 @@ class MultiPeriodDid:
 
         combinations = ((g, t) for (g, t) in product(groups, time_periods) if g <= t)
 
-        def _estimate_model(group: int, ttime: int) -> DoublyRobustDid:
+        def _estimate_model(group: int, time: int) -> DoublyRobustDid:
             current_data = data.query("group in (0,@group)  and time_period in (@group-1,@time)")
             return DoublyRobustDid(formula_or, formula_ipw, current_data)
 
@@ -27,14 +27,14 @@ class MultiPeriodDid:
     def atts(self) -> pd.Series:
         return pd.Series(
             [est.att for est in self._estimates.values()],
-            index=pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time"]),
+            index=pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time_period"]),
             name="att",
         )
 
     def standard_errors(self) -> pd.Series:
         return pd.Series(
             [est.standard_errors() for est in self._estimates.values()],
-            index=pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time"]),
+            index=pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time_period"]),
             name="s.e.",
         )
 
