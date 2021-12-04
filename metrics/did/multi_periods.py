@@ -18,10 +18,31 @@ class MultiPeriodDid:
 
         combinations = ((g, t) for (g, t) in product(groups, time_periods) if g <= t)
 
-        for g, t in combinations:
-            current_data = data.query("group in (0,@g)  and time_period in (@g-1,@t)")
-            dr = DoublyRobustDid(formula_or, formula_ipw, current_data)
-            print(g, t, dr.att, dr.standard_errors())
+        def _estimate_model(group: int, ttime: int) -> DoublyRobustDid:
+            current_data = data.query("group in (0,@group)  and time_period in (@group-1,@time)")
+            return DoublyRobustDid(formula_or, formula_ipw, current_data)
+
+        self._estimates = {(g, t): _estimate_model(g, t) for g, t in combinations}
+
+    def atts(self) -> pd.Series:
+        return pd.Series(
+            [est.att for est in self._estimates.values()],
+            index=pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time"]),
+            name="att",
+        )
+
+    def standard_errors(self) -> pd.Series:
+        return pd.Series(
+            [est.standard_errors() for est in self._estimates.values()],
+            index=pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time"]),
+            name="s.e.",
+        )
+
+    def _summary(self) -> pd.DataFrame:
+        return pd.concat((self.atts(), self.standard_errors()), axis=1)
+
+    def summary(self) -> pd.DataFrame:
+        return self._summary()
 
 
 if __name__ == "__main__":
@@ -55,3 +76,4 @@ if __name__ == "__main__":
         data[col] = data[col].astype(int)
 
     mpd_minimum_wage = MultiPeriodDid("outcome ~ 1", "treatment_status ~ 1", data)
+    print(mpd_minimum_wage.summary())
