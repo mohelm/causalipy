@@ -141,11 +141,11 @@ class DoublyRobustDid:
         self._eta_control = self._att_control.mean() / self._weights_control.mean()
         self._eta_treated = self._att_treated.mean() / self._weights_treated.mean()
 
-        self._influence_function = self._get_if(outcome, preds, X, n_treated)
+        self.influence_function = self._get_if(outcome, preds, X, n_treated)
 
     @property
     def att(self) -> float:
         return self._eta_treated - self._eta_control
 
     def standard_errors(self) -> float:
-        return np.std(self._influence_function) / np.sqrt(self.n_units)
+        return np.std(self.influence_function) / np.sqrt(self.n_units)
