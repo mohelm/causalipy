@@ -6,6 +6,7 @@ from itertools import product
 # Third party
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 
 # First party
 from metrics.did.doubly_robust import DoublyRobustDid
@@ -29,17 +30,32 @@ class MultiPeriodDid:
             [est.att for est in self._estimates.values()],
             index=pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time_period"]),
             name="att",
+            dtype=np.float_,
         )
+
+    @property
+    def _index(self) -> pd.MultiIndex:
+        return pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time_period"])
 
     def standard_errors(self) -> pd.Series:
         return pd.Series(
             [est.standard_errors() for est in self._estimates.values()],
-            index=pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time_period"]),
+            index=self._index,
             name="s.e.",
+            dtype=np.float_,
         )
 
+    def confidence_interval(self, alpha: float = 0.05) -> pd.DataFrame:
+        upper_bound = (self.atts() + norm.ppf(1 - alpha / 2) * self.standard_errors()).rename(
+            f"c.i. ub {alpha:.0%} "
+        )
+        lower_bound = (self.atts() + norm.ppf(alpha / 2) * self.standard_errors()).rename(
+            f"c.i. lb {alpha:.0%}"
+        )
+        return pd.concat((lower_bound, upper_bound), axis=1)
+
     def _summary(self) -> pd.DataFrame:
-        return pd.concat((self.atts(), self.standard_errors()), axis=1)
+        return pd.concat((self.atts(), self.standard_errors(), self.confidence_interval()), axis=1)
 
     def summary(self) -> pd.DataFrame:
         return self._summary()
@@ -76,4 +92,5 @@ if __name__ == "__main__":
         data[col] = data[col].astype(int)
 
     mpd_minimum_wage = MultiPeriodDid("outcome ~ 1", "treatment_status ~ 1", data)
-    print(mpd_minimum_wage.summary())
+    summ = mpd_minimum_wage.summary()
+    print(summ)
