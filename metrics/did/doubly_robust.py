@@ -15,7 +15,7 @@ from metrics.custom_types import MaybeString, NDArrayOfFloats, MaybeNDArrayOfFlo
 from metrics.logistic_regression import LogisticRegression
 
 
-def _prepare_data(data: pd.DataFrame, late_period: int):
+def _prepare_data(data: pd.DataFrame, late_period: int) -> pd.DataFrame:
     return data.query("time_period == @late_period").assign(
         outcome=lambda df: df["outcome"].values
         - data.loc[data["time_period"] != late_period, "outcome"].values
