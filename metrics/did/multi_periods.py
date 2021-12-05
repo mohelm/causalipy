@@ -6,6 +6,7 @@ from itertools import product
 # Third party
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from scipy.stats import norm
 
 # First party
@@ -61,37 +62,31 @@ class MultiPeriodDid:
     def summary(self) -> pd.DataFrame:
         return self._summary()
 
+    def plot_treatment_effects(self):
+        groups = self.summary().index.get_level_values("group").unique()
+        f, ax = plt.subplots(len(groups), 1, constrained_layout=True, sharex=True)
+        ax[-1].set_xlabel("time_period")
 
-if __name__ == "__main__":
+        for i_g, g in enumerate(groups):
+            current_data = self.summary().loc[g]
+            tps = np.sort(current_data.index.get_level_values("time_period"))
+            for tp in tps:
+                ax[i_g].title.set_text(f"Group {g}")
 
-    # data = pd.read_feather("/Users/moritz.helm/.cache/py-did/sim-ds.feather").rename(
-    #     columns={
-    #         "X": "control",
-    #         "treat": "treatment_status",
-    #         "period": "time_period",
-    #         "G": "group",
-    #         "Y": "outcome",
-    #     }
-    # )
-    # for col in ["treatment_status", "time_period", "group"]:
-    #     data[col] = data[col].astype(int)
-
-    # mpd = MultiPeriodDid("outcome~control", "treatment_status ~ control", data)
-
-    # MPDATA data
-    data = pd.read_feather("/Users/moritz.helm/.cache/py-did/mpdta.feather").rename(
-        columns={
-            "treat": "treatment_status",
-            "lemp": "outcome",
-            "year": "time_period",
-            "first.treat": "group",
-            "lpop": "control",
-            "countyreal": "id",
-        }
-    )
-    for col in ["treatment_status", "time_period", "group", "id"]:
-        data[col] = data[col].astype(int)
-
-    mpd_minimum_wage = MultiPeriodDid("outcome ~ 1", "treatment_status ~ 1", data)
-    summ = mpd_minimum_wage.summary()
-    print(summ)
+                color = "green" if tp >= g else "red"
+                att = current_data.loc[tp, "att"]
+                ax[i_g].plot(
+                    tp, att, marker="o", markersize=5, markeredgecolor=color, markerfacecolor=color
+                )
+                # line
+                ci_lb = current_data.columns[2]
+                ci_ub = current_data.columns[3]
+                ax[i_g].vlines(
+                    tp,
+                    ymin=current_data.loc[tp, ci_lb],
+                    ymax=current_data.loc[tp, ci_ub],
+                    color=color,
+                    lw=1.5,
+                )
+                ax[i_g].axhline(0, color="grey", lw=0.8)
+                ax[i_g].set_xticks(tps, tps)
