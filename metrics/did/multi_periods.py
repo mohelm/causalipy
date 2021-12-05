@@ -65,28 +65,34 @@ class MultiPeriodDid:
     def plot_treatment_effects(self):
         groups = self.summary().index.get_level_values("group").unique()
         f, ax = plt.subplots(len(groups), 1, constrained_layout=True, sharex=True)
+
         ax[-1].set_xlabel("time_period")
+        f.suptitle("Group-time Average Treatment Effects", fontsize=16)
 
         for i_g, g in enumerate(groups):
             current_data = self.summary().loc[g]
             tps = np.sort(current_data.index.get_level_values("time_period"))
-            for tp in tps:
-                ax[i_g].title.set_text(f"Group {g}")
 
+            ax[i_g].title.set_text(f"Group {g}")
+            ax[i_g].axhline(0, color="grey", lw=0.8)
+            ax[i_g].set_xticks(tps, tps)
+
+            for tp in tps:
                 color = "green" if tp >= g else "red"
-                att = current_data.loc[tp, "att"]
+
                 ax[i_g].plot(
-                    tp, att, marker="o", markersize=5, markeredgecolor=color, markerfacecolor=color
+                    tp,
+                    current_data.loc[tp, "att"],
+                    marker="o",
+                    markersize=5,
+                    markeredgecolor=color,
+                    markerfacecolor=color,
                 )
-                # line
-                ci_lb = current_data.columns[2]
-                ci_ub = current_data.columns[3]
+                # confidence interval
                 ax[i_g].vlines(
                     tp,
-                    ymin=current_data.loc[tp, ci_lb],
-                    ymax=current_data.loc[tp, ci_ub],
+                    ymin=current_data.loc[tp, current_data.columns[2]],
+                    ymax=current_data.loc[tp, current_data.columns[3]],
                     color=color,
                     lw=1.5,
                 )
-                ax[i_g].axhline(0, color="grey", lw=0.8)
-                ax[i_g].set_xticks(tps, tps)
