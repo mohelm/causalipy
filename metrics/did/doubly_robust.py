@@ -15,10 +15,15 @@ from metrics.custom_types import MaybeString, NDArrayOfFloats, MaybeNDArrayOfFlo
 from metrics.logistic_regression import LogisticRegression
 
 
-def _prepare_data(data: pd.DataFrame, late_period: int) -> pd.DataFrame:
-    return data.query("time_period == @late_period").assign(
-        outcome=lambda df: df["outcome"].values
-        - data.loc[data["time_period"] != late_period, "outcome"].values
+def _prepare_data(
+    data: pd.DataFrame,
+    outcome: str,
+    time_period_indicator: str,
+    late_period: int,
+) -> pd.DataFrame:
+    return data.query(f"{time_period_indicator} == @late_period").assign(
+        outcome=lambda df: df[outcome].values
+        - data.loc[data[time_period_indicator] != late_period, outcome].values
     )
 
 
@@ -39,7 +44,7 @@ def _assign_estimation_method(formula_or: MaybeString, formula_ipw: MaybeString)
 class DoublyRobustDid:
     def _get_control_diff_in_diff(
         self, outcome: NDArrayOfFloats, preds: MaybeNDArrayOfFloats
-    ) -> NDArray[np.float_]:
+    ) -> NDArrayOfFloats:
         if self.method == Method.dr:
             return outcome - cast(NDArrayOfFloats, preds)
         if self.method == Method.oreg:
@@ -108,19 +113,29 @@ class DoublyRobustDid:
             outcome, preds, X, n_treated
         )
 
-    def __init__(self, formula_or: MaybeString, formula_ipw: MaybeString, data: pd.DataFrame):
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        outcome: str = "Y",
+        treatment_indicator: str = "D",
+        time_period_indicator: str = "time_period",
+        formula_or: MaybeString = None,
+        formula_ipw: MaybeString = None,
+    ):
 
         self.method = _assign_estimation_method(formula_or, formula_ipw)
 
         # Prepare data
-        late_period = data["time_period"].max()
-        data = _prepare_data(data, late_period)
-        n_treated = data.query("treatment_status==1").shape[0]
-        outcome: NDArrayOfFloats = data["outcome"].values.reshape(-1, 1)
+        late_period = data[time_period_indicator].max()
+        data = _prepare_data(data, outcome, time_period_indicator, late_period)
+        n_treated = data.query(f"{treatment_indicator}==1").shape[0]
+        difference: NDArrayOfFloats = data[outcome].values.reshape(-1, 1)
         self.n_units = data.shape[0]
 
         self.selection_model = LogisticRegression(formula_ipw, data) if formula_ipw else None
-        self.or_model = Ols(formula_or, data.query("treatment_status==0")) if formula_or else None
+        self.or_model = (
+            Ols(formula_or, data.query(f"{treatment_indicator}==0")) if formula_or else None
+        )
         preds: MaybeNDArrayOfFloats = self.or_model.predict(data) if self.or_model else None
 
         # TODO: why is the design matrix identical?
@@ -130,18 +145,22 @@ class DoublyRobustDid:
             else self.selection_model.get_design_matrix(data)
         )
 
-        self._weights_treated = data["treatment_status"].values.reshape(-1, 1)
+        self._weights_treated = data[treatment_indicator].values.reshape(-1, 1)
         self._weights_control = (
             self.selection_model.predict_odds(data) * (1 - self._weights_treated)
             if formula_ipw
             else self._weights_treated
         )
-        self._att_treated = self._weights_treated * self._get_treatment_diff_in_diff(outcome, preds)
-        self._att_control = self._weights_control * self._get_control_diff_in_diff(outcome, preds)
+        self._att_treated = self._weights_treated * self._get_treatment_diff_in_diff(
+            difference, preds
+        )
+        self._att_control = self._weights_control * self._get_control_diff_in_diff(
+            difference, preds
+        )
         self._eta_control = self._att_control.mean() / self._weights_control.mean()
         self._eta_treated = self._att_treated.mean() / self._weights_treated.mean()
 
-        self.influence_function = self._get_if(outcome, preds, X, n_treated)
+        self.influence_function = self._get_if(difference, preds, X, n_treated)
 
     @property
     def att(self) -> float:

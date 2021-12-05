@@ -90,31 +90,54 @@ def simulate_data(
 
 
 class MultiPeriodDid:
-    def __init__(self, formula_or: MaybeString, formula_ipw: MaybeString, data: pd.DataFrame):
-        groups = np.sort(data.group.unique())[1:]
-        time_periods = np.sort(data.time_period.unique())[1:]
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        outcome: str = "Y",
+        treatment_indicator: str = "D",
+        time_period_indicator: str = "time_period",
+        group_indiciator: str = "group",
+        formula_or: MaybeString = None,
+        formula_ipw: MaybeString = None,
+    ):
+
+        groups = np.sort(data[group_indiciator].unique())[1:]
+        time_periods = np.sort(data[time_period_indicator].unique())[1:]
+        self._estimate_identifier_names = [group_indiciator, time_period_indicator]
+        self._group_name = group_indiciator
+        self._time_period_name = time_period_indicator
 
         combinations = ((g, t) for (g, t) in product(groups, time_periods))
 
-        def _estimate_model(group: int, time: int) -> DoublyRobustDid:
-            early_tp = group - 1 if group <= time else time - 1  # noqa
-            current_data = data.query("group in (0,@group)  and time_period in (@early_tp,@time)")
-
-            return DoublyRobustDid(formula_or, formula_ipw, current_data)
+        def _estimate_model(group: int, late_tp: int) -> DoublyRobustDid:
+            early_tp = group - 1 if group <= late_tp else late_tp - 1  # noqa
+            query = "group in (0,@group)  and time_period in (@early_tp,@late_tp)"
+            return DoublyRobustDid(
+                data.query(query),
+                outcome,
+                treatment_indicator,
+                time_period_indicator,
+                formula_or,
+                formula_ipw,
+            )
 
         self._estimates = {(g, t): _estimate_model(g, t) for g, t in combinations}
 
     def atts(self) -> pd.Series:
         return pd.Series(
             [est.att for est in self._estimates.values()],
-            index=pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time_period"]),
+            index=pd.MultiIndex.from_tuples(
+                self._estimates.keys(), names=self._estimate_identifier_names
+            ),
             name="att",
             dtype=np.float_,
         )
 
     @property
     def _index(self) -> pd.MultiIndex:
-        return pd.MultiIndex.from_tuples(self._estimates.keys(), names=["group", "time_period"])
+        return pd.MultiIndex.from_tuples(
+            self._estimates.keys(), names=self._estimate_identifier_names
+        )
 
     def standard_errors(self) -> pd.Series:
         return pd.Series(
@@ -139,16 +162,16 @@ class MultiPeriodDid:
     def summary(self) -> pd.DataFrame:
         return self._summary()
 
-    def plot_treatment_effects(self):
-        groups = self.summary().index.get_level_values("group").unique()
+    def plot_treatment_effects(self, x_label: str = "Time Period"):
+        groups = self.summary().index.get_level_values(self._group_name).unique()
         f, ax = plt.subplots(len(groups), 1, constrained_layout=True, sharex=True)
 
-        ax[-1].set_xlabel("time_period")
+        ax[-1].set_xlabel(x_label)
         f.suptitle("Group-time Average Treatment Effects", fontsize=16)
 
         for i_g, g in enumerate(groups):
             current_data = self.summary().loc[g]
-            tps = np.sort(current_data.index.get_level_values("time_period"))
+            tps = np.sort(current_data.index.get_level_values(self._time_period_name))
 
             ax[i_g].title.set_text(f"Group {g}")
             ax[i_g].axhline(0, color="grey", lw=0.8)

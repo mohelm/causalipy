@@ -27,7 +27,9 @@ def dataset():
 
 
 class FakeDoublyRobustDid:
-    def __init__(self, formula_or, formular_ipw, data):
+    def __init__(
+        self, data, outcome, treatment_indicator, time_period_indicator, formula_or, formular_ipw
+    ):
         pass
 
     @property
@@ -52,7 +54,7 @@ def test_multi_period_did_summary(mocker, dataset):
     )
 
     # WHEN I call  the MultiPeriodDid class with the dataset
-    dd = MultiPeriodDid(None, None, dataset)
+    dd = MultiPeriodDid(dataset)
 
     # THEN I expect for the att, the standard errors and the summary to get back the correct indices
     pd.testing.assert_index_equal(dd.summary().index, expected_index)

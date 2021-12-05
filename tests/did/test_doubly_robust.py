@@ -28,7 +28,13 @@ def test_doubly_robust_results(
     # GIVEN a specification for the two models and knowledge about the expected results
 
     # WHEN I call the DoublyRobustDid estimator
-    out = DoublyRobustDid(or_model, ipw_model, simulate_data_multi_period_did)
+    out = DoublyRobustDid(
+        simulate_data_multi_period_did,
+        outcome="outcome",
+        treatment_indicator="treatment_status",
+        formula_or=or_model,
+        formula_ipw=ipw_model,
+    )
 
     # THEN I expect to get back the expected results
     np.testing.assert_almost_equal(out.att, expected_result.att, 4)
