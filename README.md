@@ -1,11 +1,16 @@
-# py-metrics
+# CausaliPy
 
-Econometric tools for Python
+Causal Methods implemented in Python.
 
+## Installation
+
+## Example
+
+## License
 
 ## TODO
 
-## Large
+### Large
 
 - The main disadvantages is currently that the or estimator and the ipw
   estimator are deeply hidden inside the DR estimator. It would be better to
@@ -26,7 +31,7 @@ Econometric tools for Python
 - Interesting inbetween move could be to move the estimator implementation
   closer to the paper...
 
-## Small
+### Small
 
 - Ask Simon about where to put the app
 - What plotting libary to use -> probably Seaborn (in the app it would of course
