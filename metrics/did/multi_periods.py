@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 
 # First party
-from metrics.custom_types import NDArrayOfFloats
+from metrics.custom_types import MaybeInt, MaybeString, NDArrayOfFloats
 from metrics.did.doubly_robust import DoublyRobustDid
 
 
@@ -18,8 +18,8 @@ def simulate_data(
     n_treated_units: int = 4000,
     n_untreated_units: int = 4000,
     n_time_periods: int = 4,
-    seed: int | None = None,
-):
+    seed: MaybeInt = None,
+) -> pd.DataFrame:
     """
     Simulate a dataset to demonstrate multi-period analysis.
 
@@ -90,7 +90,7 @@ def simulate_data(
 
 
 class MultiPeriodDid:
-    def __init__(self, formula_or: str | None, formula_ipw: str | None, data: pd.DataFrame):
+    def __init__(self, formula_or: MaybeString, formula_ipw: MaybeString, data: pd.DataFrame):
         groups = np.sort(data.group.unique())[1:]
         time_periods = np.sort(data.time_period.unique())[1:]
 
