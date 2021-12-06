@@ -22,10 +22,8 @@ mpd_minimum_wage.plot_treatment_effects()
 ```
 
 This will give:
+
 ![alt text](./readme_fig.png)
-
-
-...
 
 ## License
 
