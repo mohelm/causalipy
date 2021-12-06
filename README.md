@@ -8,6 +8,8 @@ Causal Methods implemented in Python.
 
 ## License
 
+This project is licensed under the terms of the MIT license.
+
 ## TODO
 
 ### Small
@@ -56,4 +58,5 @@ Clean-up
 
 - Interesting inbetween move could be to move the estimator implementation
   closer to the paper...
+
 
