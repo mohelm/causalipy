@@ -10,6 +10,32 @@ Causal Methods implemented in Python.
 
 ## TODO
 
+### Small
+
+Demo app:
+- Think about where to put the app
+
+Substantial extensions
+- Add aggregate effects
+- What should be the default setting for the formulas? - In the paper, it seems
+  like as if they _all_ collapse to the same thing if co-variates do not play a
+  role (that is, it is probably good to set them both to `~1` - check this?
+
+
+Clean-up
+- Clean up OLS and LogisticRegression files 
+- Add mypy, flake8 and black plugins to pytest - do you even want to do this?
+- Github actions pipeline (especially relevant for the app) - but maybe do one
+  for tests here as well.
+
+- Update this README:
+  - License
+  - Installation
+  - Demo + graph
+  - Rename everything to `causalipy`
+
+
+
 ### Large
 
 - The main disadvantages is currently that the or estimator and the ipw
@@ -30,22 +56,4 @@ Causal Methods implemented in Python.
 
 - Interesting inbetween move could be to move the estimator implementation
   closer to the paper...
-
-### Small
-
-- Ask Simon about where to put the app
-- Add aggregate effects
-- Clean up OLS and LogisticRegression files 
-- Add mypy, flake8 and black plugins to pytest - do you even want to do this?
-- Github actions pipeline (especially relevant for the app) - but maybe do one
-  for tests here as well.
-- What should be the default setting for the formulas? - In the paper, it seems
-  like as if they _all_ collapse to the same thing if co-variates do not play a
-  role (that is, it is probably good to set them both to `~1` - check this?
-- Update this README:
-  - License
-  - Installation
-  - Demo + graph
-  - Rename everything to `causalipy`
-
 
