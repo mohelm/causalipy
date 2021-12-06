@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 # First party
-from metrics.did.doubly_robust import DoublyRobustDid
+from causalipy.did.doubly_robust import DoublyRobustDid
 
 
 class ExpectedResult(NamedTuple):

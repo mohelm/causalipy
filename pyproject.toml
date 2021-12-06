@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "metrics"
+name = "causalipy"
 version = "0.1.0"
 description = "Econometrics for Python"
 authors = ["Moritz Helm <mohelm84@gmail.com>"]

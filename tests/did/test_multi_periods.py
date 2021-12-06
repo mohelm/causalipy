@@ -8,7 +8,7 @@ import pytest
 from numpy.random import default_rng
 
 # First party
-from metrics.did.multi_periods import MultiPeriodDid
+from causalipy.did.multi_periods import MultiPeriodDid
 
 rng = default_rng()
 
@@ -42,7 +42,7 @@ class FakeDoublyRobustDid:
 
 def test_multi_period_did_summary(mocker, dataset):
     # GIVEN a dataset and a fake estimator
-    mocker.patch("metrics.did.multi_periods.DoublyRobustDid", FakeDoublyRobustDid)
+    mocker.patch("causalipy.did.multi_periods.DoublyRobustDid", FakeDoublyRobustDid)
 
     all_groups = dataset.group.unique()
     groups = np.delete(all_groups, np.where(all_groups == 0))
