@@ -34,15 +34,18 @@ Causal Methods implemented in Python.
 ### Small
 
 - Ask Simon about where to put the app
-- What plotting libary to use -> probably Seaborn (in the app it would of course
-  be better to use Altair or Plotly). Probably you could switch between the
-  graphing libraries relatively easily and start with Seaborn.
 - Add aggregate effects
-- Add "zero effects" - why does this not work with your library
-- Do not hardcode column names
 - Clean up OLS and LogisticRegression files 
 - Add mypy, flake8 and black plugins to pytest - do you even want to do this?
 - Github actions pipeline (especially relevant for the app) - but maybe do one
   for tests here as well.
+- What should be the default setting for the formulas? - In the paper, it seems
+  like as if they _all_ collapse to the same thing if co-variates do not play a
+  role (that is, it is probably good to set them both to `~1` - check this?
+- Update this README:
+  - License
+  - Installation
+  - Demo + graph
+  - Rename everything to `causalipy`
 
 
