@@ -40,9 +40,6 @@ Demo app:
 Substantial extensions
 
 - Add aggregate effects
-- What should be the default setting for the formulas? - In the paper, it seems
-  like as if they _all_ collapse to the same thing if co-variates do not play a
-  role (that is, it is probably good to set them both to `~1` - check this?
 
 Clean-up
 
@@ -52,10 +49,7 @@ Clean-up
   for tests here as well.
 
 - Update this README:
-  - License
   - Installation
-  - Demo + graph
-  - Rename everything to `causalipy`
 
 ### Large
 
