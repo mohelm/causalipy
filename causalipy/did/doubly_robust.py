@@ -119,11 +119,15 @@ class DoublyRobustDid:
         outcome: str = "Y",
         treatment_indicator: str = "D",
         time_period_indicator: str = "time_period",
-        formula_or: MaybeString = None,
-        formula_ipw: MaybeString = None,
+        formula_or: MaybeString = "~ 1",
+        formula_ipw: MaybeString = "~ 1",
     ):
 
         self.method = _assign_estimation_method(formula_or, formula_ipw)
+        self.formula_or = f"{outcome} {formula_or}" if formula_or is not None else None
+        self.formula_ipw = (
+            f"{treatment_indicator} {formula_ipw}" if formula_ipw is not None else None
+        )
 
         # Prepare data
         late_period = data[time_period_indicator].max()
@@ -132,9 +136,13 @@ class DoublyRobustDid:
         difference: NDArrayOfFloats = data[outcome].values.reshape(-1, 1)
         self.n_units = data.shape[0]
 
-        self.selection_model = LogisticRegression(formula_ipw, data) if formula_ipw else None
+        self.selection_model = (
+            LogisticRegression(self.formula_ipw, data) if formula_ipw is not None else None
+        )
         self.or_model = (
-            Ols(formula_or, data.query(f"{treatment_indicator}==0")) if formula_or else None
+            Ols(self.formula_or, data.query(f"{treatment_indicator}==0"))
+            if formula_or is not None
+            else None
         )
         preds: MaybeNDArrayOfFloats = self.or_model.predict(data) if self.or_model else None
 

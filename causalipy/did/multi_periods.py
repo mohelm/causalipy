@@ -97,9 +97,14 @@ class MultiPeriodDid:
         treatment_indicator: str = "D",
         time_period_indicator: str = "time_period",
         group_indiciator: str = "group",
-        formula_or: MaybeString = None,
-        formula_ipw: MaybeString = None,
+        formula_or: MaybeString = "~1",
+        formula_ipw: MaybeString = "~1",
     ):
+
+        self.formula_or = f"{outcome} {formula_or}" if formula_or is not None else None
+        self.formula_ipw = (
+            f"{treatment_indicator} {formula_ipw}" if formula_ipw is not None else None
+        )
 
         groups = np.sort(data[group_indiciator].unique())[1:]
         time_periods = np.sort(data[time_period_indicator].unique())[1:]
