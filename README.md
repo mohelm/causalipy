@@ -41,15 +41,18 @@ Substantial extensions
 
 - Add aggregate effects
 
-Clean-up
+Refactoring:
+- Finish refactoring of classes 5
+- Clean up OLS and LogisticRegression files 5
+
+README
+- Add installation instructions (and try them out) 5
+- Update the graph 5
 
 - Clean up OLS and LogisticRegression files
 - Add mypy, flake8 and black plugins to pytest - do you even want to do this?
 - Github actions pipeline (especially relevant for the app) - but maybe do one
   for tests here as well.
-
-- Update this README:
-  - Installation
 
 ### Large
 
