@@ -7,18 +7,6 @@ from causalipy.ols import Ols
 from causalipy.custom_types import NDArrayOfFloats
 
 
-def _prepare_data(
-    data: pd.DataFrame,
-    outcome: str,
-    time_period_indicator: str,
-    late_period: int,
-) -> pd.DataFrame:
-    return data.query(f"{time_period_indicator} == @late_period").assign(
-        outcome=lambda df: df[outcome].values
-        - data.loc[data[time_period_indicator] != late_period, outcome].values
-    )
-
-
 class DataHandler:
     def __init__(
         self,
@@ -29,10 +17,16 @@ class DataHandler:
     ):
 
         late_period = data[time_period_indicator].max()
-        self._data = _prepare_data(data, outcome, time_period_indicator, late_period)
         self._treatment_indicator = treatment_indicator
         self._outcome = outcome
         self._time_period_indicator = time_period_indicator
+        self._data = self._prepare_data(data, late_period)
+
+    def _prepare_data(self, data: pd.DataFrame, late_period: int) -> pd.DataFrame:
+        return data.query(f"{self._time_period_indicator} == @late_period").assign(
+            outcome=lambda df: df[self._outcome].values
+            - data.loc[data[self._time_period_indicator] != late_period, self._outcome].values
+        )
 
     @property
     def untreated_data(self) -> pd.DataFrame:
@@ -102,3 +96,7 @@ class OrEstimator:
 
     def _get_if(self, X: NDArrayOfFloats) -> NDArrayOfFloats:
         return self._get_treatment_if() - self._get_control_if(X)
+
+
+class IpwEstimator:
+    pass

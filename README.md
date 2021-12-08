@@ -41,11 +41,20 @@ Substantial extensions
 
 - Add aggregate effects
 
+- Add the data (and update the README) 5
+
+  - Can you do it like Seaborn
+
+- Simulation function finish it and test it 5
+
 Refactoring:
+
 - Finish refactoring of classes 5
+  - Test the data handler.
 - Clean up OLS and LogisticRegression files 5
 
 README
+
 - Add installation instructions (and try them out) 5
 - Update the graph 5
 
