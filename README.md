@@ -33,10 +33,6 @@ This project is licensed under the terms of the MIT license.
 
 ### Small
 
-Demo app:
-
-- Think about where to put the app
-
 Substantial extensions
 
 - Add aggregate effects
@@ -58,29 +54,14 @@ README
 - Add installation instructions (and try them out) 5
 - Update the graph 5
 
-- Clean up OLS and LogisticRegression files
 - Add mypy, flake8 and black plugins to pytest - do you even want to do this?
 - Github actions pipeline (especially relevant for the app) - but maybe do one
   for tests here as well.
 
+- Think of better names for the DR estimator
+
 ### Large
 
-- The main disadvantages is currently that the or estimator and the ipw
-  estimator are deeply hidden inside the DR estimator. It would be better to
-  have the DR estimator be somehow composed out of the DR estimator and the IPW
-  estimator.
+Demo app:
 
-  - Maybe think about it like that - you have the data and then you have the two
-    models (or and ipw), and they somehow combine the data with these estimates.
-    Maybe you need three entities - one which handles the data, one which
-    handles ipw and one which handles or. The data class mainly has to return
-    the treatment status and the outcome.
-  - You could try that first with the ATT which is much simpler.
-  - The DR class is then mainly composed of the two estimatators and maybe also
-    the data class.
-
-- In the shorter term, however, it would be good to do some code clean-ups and
-  move the interface towards useability.
-
-- Interesting inbetween move could be to move the estimator implementation
-  closer to the paper...
+- Think about where to put the app

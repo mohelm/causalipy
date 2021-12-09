@@ -5,6 +5,7 @@ import pandas as pd
 # First party
 from causalipy.ols import Ols
 from causalipy.custom_types import NDArrayOfFloats
+from causalipy.logistic_regression import LogisticRegression
 
 
 class DataHandler:
@@ -42,11 +43,15 @@ class DataHandler:
 
     @property
     def data(self) -> pd.DataFrame:
-        return self.data
+        return self._data
 
     @property
     def n_treated(self) -> int:
         return self.treatment_status.sum()
+
+    @property
+    def n_units(self) -> int:
+        return self._data.shape[0]
 
 
 class OrEstimator:
@@ -59,21 +64,20 @@ class OrEstimator:
         formula_or: str = "~ 1",
     ):
 
+        self._formula = f"{outcome} {formula_or}"
         self._data = DataHandler(data, outcome, treatment_indicator, time_period_indicator)
-        self._outcome_model = Ols(formula_or, self._data.untreated_data)
+        self._outcome_model = Ols(self._formula, self._data.untreated_data)
         X = self._outcome_model.get_design_matrix(self._data.data)
 
-        self._predictions = self._outcome_model.predict(data)
+        self._predictions = self._outcome_model.predict(self._data.data)
         self._weights_treated = self._data.treatment_status
         self._weights_control = self._data.treatment_status
-        self._diff_in_diff = self._data.outcome - self._predictions
-        self._att_treated = self._weights_treated * self._diff_in_diff
-        self._att_control = self._weights_control * self._diff_in_diff
+        self._att_treated = self._weights_treated * self._data.outcome
+        self._att_control = self._weights_control * self._predictions
         self._eta_control = self._att_control.mean() / self._weights_control.mean()
         self._eta_treated = self._att_treated.mean() / self._weights_treated.mean()
-        self._att = self._eta_control - self._eta_control
 
-        self._influence_function = self._get_if(X)
+        self.influence_function = self._get_if(X)
 
     def _get_alr_or_model(self, X: NDArrayOfFloats) -> NDArrayOfFloats:
         # TODO: careful here, you assume a certain structure of data.
@@ -86,7 +90,9 @@ class OrEstimator:
         )
 
     def _get_treatment_if(self) -> NDArrayOfFloats:
-        return self._att_treated - self._weights_treated * self._eta_treated
+        return (
+            self._att_treated - self._weights_treated * self._eta_treated
+        ) / self._weights_treated.mean()
 
     def _get_control_if(self, X) -> NDArrayOfFloats:
         component_1 = self._att_control - self._weights_control * self._eta_control
@@ -97,6 +103,58 @@ class OrEstimator:
     def _get_if(self, X: NDArrayOfFloats) -> NDArrayOfFloats:
         return self._get_treatment_if() - self._get_control_if(X)
 
+    @property
+    def att(self) -> float:
+        return self._eta_treated - self._eta_control
+
+    def standard_errors(self) -> float:
+        return np.std(self.influence_function) / np.sqrt(self._data.n_units)
+
 
 class IpwEstimator:
-    pass
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        outcome: str = "Y",
+        treatment_indicator: str = "D",
+        time_period_indicator: str = "time_period",
+        formula_ipw: str = "~ 1",
+    ):
+        self._formula = f"{treatment_indicator}  {formula_ipw}"
+        self._data = DataHandler(data, outcome, treatment_indicator, time_period_indicator)
+        self._selection_model = LogisticRegression(self._formula, self._data.data)
+        X = self._selection_model.get_design_matrix(self._data.data)
+
+        self._weights_treated = self._data.treatment_status
+        self._weights_control = self._selection_model.predict_odds(self._data.data) * (
+            1 - self._weights_treated
+        )
+        self._att_treated = self._weights_treated * self._data.outcome
+        self._att_control = self._weights_control * self._data.outcome
+        self._eta_control = self._att_control.mean() / self._weights_control.mean()
+        self._eta_treated = self._att_treated.mean() / self._weights_treated.mean()
+
+        self.influence_function = self._get_if(X)
+
+    def _get_treatment_if(self) -> NDArrayOfFloats:
+        return (
+            self._att_treated - self._weights_treated * self._eta_treated
+        ) / self._weights_treated.mean()
+
+    def _get_control_if(self, X) -> NDArrayOfFloats:
+        component_1 = self._att_control - self._weights_control * self._eta_control
+        alr = self._selection_model.score @ self._selection_model.vce
+        inner = self._data.outcome - self._eta_control
+        m2 = (self._weights_control * inner * X).mean(axis=0)
+        component_2 = (alr @ m2).reshape(-1, 1)
+        return (component_1 + component_2) / self._weights_control.mean()
+
+    def _get_if(self, X: NDArrayOfFloats) -> NDArrayOfFloats:
+        return self._get_treatment_if() - self._get_control_if(X)
+
+    @property
+    def att(self) -> float:
+        return self._eta_treated - self._eta_control
+
+    def standard_errors(self) -> float:
+        return np.std(self.influence_function) / np.sqrt(self._data.n_units)
