@@ -111,10 +111,61 @@ class BaseDrDid(ABC):
         self._att_control = self._weights_control * self._outcome_control
         self._eta_control = self._att_control.mean() / self._weights_control.mean()
         self._eta_treated = self._att_treated.mean() / self._weights_treated.mean()
+        self.influence_function = self._get_if()
 
     @property
     def att(self) -> float:
         return self._eta_treated - self._eta_control
+
+    def _get_alr_or_model(self, n: int, k: int) -> NDArrayOfFloats:
+        # TODO: careful here, you assume a certain structure of data.
+        # TODO: n and k should come from some place else
+        return (
+            n
+            * np.r_[
+                np.zeros((self._data.n_treated, k)),
+                self._outcome_model.asymptotic_linear_representation,
+            ]
+        )
+
+    def _get_if(self) -> NDArrayOfFloats:
+        return self._get_treatment_if() - self._get_control_if()
+
+    @property
+    def _if_treated_component_1(self) -> NDArrayOfFloats:
+
+        return (
+            self._att_treated - self._weights_treated * self._eta_treated
+        ) / self._weights_treated.mean()
+
+    @property
+    def _if_control_component_1(self) -> NDArrayOfFloats:
+        return self._att_control - self._weights_control * self._eta_control
+
+    @property
+    def _if_control_component_2(self) -> NDArrayOfFloats:
+        alr = self._selection_model.score @ self._selection_model.vce
+        inner = self._data.outcome - self._eta_control
+        X = self._selection_model.get_design_matrix(self._data.data)
+        m2 = (self._weights_control * inner * X).mean(axis=0)
+        return (alr @ m2).reshape(-1, 1)
+
+    @property
+    def _if_control_component_3(self) -> NDArrayOfFloats:
+        X = self._outcome_model.get_design_matrix(self._data.data)
+        alr_or = self._get_alr_or_model(*X.shape)
+        return alr_or @ ((self._weights_control * X).mean(axis=0)).reshape(-1, 1)
+
+    @abstractmethod
+    def _get_treatment_if(self) -> NDArrayOfFloats:
+        ...
+
+    @abstractmethod
+    def _get_control_if(self) -> NDArrayOfFloats:
+        ...
+
+    def standard_errors(self) -> float:
+        return np.std(self.influence_function) / np.sqrt(self._data.n_units)
 
 
 class OrEstimatorAlt(BaseDrDid):
@@ -133,6 +184,14 @@ class OrEstimatorAlt(BaseDrDid):
     def _outcome_control(self) -> NDArrayOfFloats:
         return self._predictions
 
+    def _get_treatment_if(self) -> NDArrayOfFloats:
+        return self._if_treated_component_1
+
+    def _get_control_if(self) -> NDArrayOfFloats:
+        return (
+            self._if_control_component_1 + self._if_control_component_3
+        ) / self._weights_control.mean()
+
 
 class IpwEstimatorAlt(BaseDrDid):
     _estimate_ipw = True
@@ -150,6 +209,14 @@ class IpwEstimatorAlt(BaseDrDid):
     def _outcome_control(self) -> NDArrayOfFloats:
         return self._data.outcome
 
+    def _get_treatment_if(self) -> NDArrayOfFloats:
+        return self._if_treated_component_1
+
+    def _get_control_if(self) -> NDArrayOfFloats:
+        return (
+            self._if_control_component_1 + self._if_control_component_2
+        ) / self._weights_control.mean()
+
 
 class DrEstimatorAlt(BaseDrDid):
     _estimate_ipw = True
@@ -166,6 +233,23 @@ class DrEstimatorAlt(BaseDrDid):
     @property
     def _outcome_control(self) -> NDArrayOfFloats:
         return self._data.outcome - self._predictions
+
+    @property
+    def _get_treatment_if(self) -> NDArrayOfFloats:
+        X = self._outcome_model.get_design_matrix(self._data.data)
+        alr_or = self._get_alr_or_model(*X.shape)
+        return (
+            self._get_treatment_if
+            - (alr_or @ (self._weights_treated * X).mean(axis=0)).reshape(-1, 1)
+        ) / self._weights_treated.mean()
+
+    @property
+    def _get_control_if(self) -> NDArrayOfFloats:
+        return (
+            self._if_control_component_1
+            + self._if_control_component_2
+            - self._if_control_component_3
+        ) / self._weights_control.mean()
 
 
 class OrEstimator:
