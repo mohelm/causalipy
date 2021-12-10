@@ -1,117 +1,95 @@
-from __future__ import annotations
-
 # Core Library
+from abc import ABC, abstractmethod
 from enum import Enum
-from typing import cast
+from typing import ClassVar
 
 # Third party
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
 
 # First party
 from causalipy.ols import Ols
-from causalipy.custom_types import MaybeString, NDArrayOfFloats, MaybeNDArrayOfFloats
+from causalipy.custom_types import NDArrayOfFloats
 from causalipy.logistic_regression import LogisticRegression
 
 
-def _prepare_data(
-    data: pd.DataFrame,
-    outcome: str,
-    time_period_indicator: str,
-    late_period: int,
-) -> pd.DataFrame:
-    return data.query(f"{time_period_indicator} == @late_period").assign(
-        outcome=lambda df: df[outcome].values
-        - data.loc[data[time_period_indicator] != late_period, outcome].values
-    )
+class DataHandler:
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        outcome: str,
+        treatment_indicator: str,
+        time_period_indicator: str,
+    ):
 
+        late_period = data[time_period_indicator].max()
+        self._treatment_indicator = treatment_indicator
+        self._outcome = outcome
+        self._time_period_indicator = time_period_indicator
+        self._data = self._prepare_data(data, late_period)
 
-class Method(str, Enum):
-    dr = "dr"
-    ipw = "ipw"
-    oreg = "or"
-
-
-def _assign_estimation_method(formula_or: MaybeString, formula_ipw: MaybeString) -> Method:
-    if formula_or and formula_ipw:
-        return Method.dr
-    if formula_or:
-        return Method.oreg
-    return Method.ipw
-
-
-class DoublyRobustDid:
-    def _get_control_diff_in_diff(
-        self, outcome: NDArrayOfFloats, preds: MaybeNDArrayOfFloats
-    ) -> NDArrayOfFloats:
-        if self.method == Method.dr:
-            return outcome - cast(NDArrayOfFloats, preds)
-        if self.method == Method.oreg:
-            return cast(NDArrayOfFloats, preds)
-        return outcome
-
-    def _get_treatment_diff_in_diff(
-        self, outcome: NDArrayOfFloats, preds: MaybeNDArrayOfFloats
-    ) -> NDArrayOfFloats:
-        return outcome - cast(NDArrayOfFloats, preds) if self.method == Method.dr else outcome
-
-    def _get_alr_or_model(self, X: NDArrayOfFloats, model: Ols, n_treated: int) -> NDArrayOfFloats:
-        # TODO: careful here, you assume a certain structure of data.
-        return (
-            len(X)
-            * np.r_[np.zeros((n_treated, X.shape[1])), model.asymptotic_linear_representation]
+    def _prepare_data(self, data: pd.DataFrame, late_period: int) -> pd.DataFrame:
+        return data.query(f"{self._time_period_indicator} == @late_period").assign(
+            outcome=lambda df: df[self._outcome].values
+            - data.loc[data[self._time_period_indicator] != late_period, self._outcome].values
         )
 
-    def _get_treatment_if(self, X: NDArrayOfFloats, n_treated: int) -> NDArrayOfFloats:
-        component_1 = self._att_treated - self._weights_treated * self._eta_treated
-        if self.method != Method.dr:
-            return component_1 / self._weights_treated.mean()
+    @property
+    def untreated_data(self) -> pd.DataFrame:
+        return self._data.query(f"{self._treatment_indicator} == 0")
 
-        or_model = cast(Ols, self.or_model)
-        alr_or = self._get_alr_or_model(X, or_model, n_treated)
-        return (
-            component_1 - (alr_or @ (self._weights_treated * X).mean(axis=0)).reshape(-1, 1)
-        ) / self._weights_treated.mean()
+    @property
+    def outcome(self) -> NDArrayOfFloats:
+        return self._data[self._outcome].values.reshape(-1, 1)
 
-    def _get_control_if(
-        self,
-        outcome: NDArrayOfFloats,
-        preds: MaybeNDArrayOfFloats,
-        X: NDArrayOfFloats,
-        n_treated: int,
-    ) -> NDArrayOfFloats:
-        component_1 = self._att_control - self._weights_control * self._eta_control
+    @property
+    def treatment_status(self) -> NDArrayOfFloats:
+        return self._data[self._treatment_indicator].values.reshape(-1, 1)
 
-        if self.method != Method.ipw:
-            or_model = cast(Ols, self.or_model)
-            alr_or = self._get_alr_or_model(X, or_model, n_treated)
-            component_3 = alr_or @ ((self._weights_control * X).mean(axis=0)).reshape(-1, 1)
+    @property
+    def data(self) -> pd.DataFrame:
+        return self._data
 
-        if self.method != Method.oreg:
-            alr = self.selection_model.score @ self.selection_model.vce
-            inner = outcome - self._eta_control
-            inner = inner if self.method == Method.ipw else inner - preds
-            m2 = (self._weights_control * inner * X).mean(axis=0)
-            component_2 = (alr @ m2).reshape(-1, 1)
+    @property
+    def n_treated(self) -> int:
+        return self.treatment_status.sum()
 
-        if self.method == Method.dr:
-            return (component_1 + component_2 - component_3) / self._weights_control.mean()
+    @property
+    def n_units(self) -> int:
+        return self._data.shape[0]
 
-        if self.method == Method.oreg:
-            return (component_1 + component_3) / self._weights_control.mean()
-        return (component_1 + component_2) / self._weights_control.mean()
 
-    def _get_if(
-        self,
-        outcome: NDArray[np.float_],
-        preds: MaybeNDArrayOfFloats,
-        X: NDArrayOfFloats,
-        n_treated: int,
-    ) -> NDArray[np.float_]:
-        return self._get_treatment_if(X, n_treated) - self._get_control_if(
-            outcome, preds, X, n_treated
-        )
+class BaseDrDid(ABC):
+
+    _estimate_ipw: ClassVar[bool]
+    _estimate_or: ClassVar[bool]
+
+    @property
+    def _predictions(self) -> NDArrayOfFloats:
+        return self._outcome_model.predict(self._data.data)
+
+    @property
+    def _prop_odds(self) -> NDArrayOfFloats:
+        return self._selection_model.predict_odds(self._data.data)
+
+    @property
+    def _weights_treated(self) -> NDArrayOfFloats:
+        return self._data.treatment_status
+
+    @property
+    @abstractmethod
+    def _weights_control(self) -> NDArrayOfFloats:
+        ...
+
+    @property
+    @abstractmethod
+    def _outcome_treated(self) -> NDArrayOfFloats:
+        ...
+
+    @property
+    @abstractmethod
+    def _outcome_control(self) -> NDArrayOfFloats:
+        ...
 
     def __init__(
         self,
@@ -119,60 +97,167 @@ class DoublyRobustDid:
         outcome: str = "Y",
         treatment_indicator: str = "D",
         time_period_indicator: str = "time_period",
-        formula_or: MaybeString = "~ 1",
-        formula_ipw: MaybeString = "~ 1",
+        formula: str = "~ 1",
     ):
+        self._data = DataHandler(data, outcome, treatment_indicator, time_period_indicator)
 
-        self.method = _assign_estimation_method(formula_or, formula_ipw)
-        self.formula_or = f"{outcome} {formula_or}" if formula_or is not None else None
-        self.formula_ipw = (
-            f"{treatment_indicator} {formula_ipw}" if formula_ipw is not None else None
-        )
+        if self._estimate_or:
+            self._formula = f"{outcome} {formula}"
+            self._outcome_model = Ols(self._formula, self._data.untreated_data)
+        if self._estimate_ipw:
+            self._formula = f"{treatment_indicator}  {formula}"
+            self._selection_model = LogisticRegression(self._formula, self._data.data)
 
-        # Prepare data
-        late_period = data[time_period_indicator].max()
-        data = _prepare_data(data, outcome, time_period_indicator, late_period)
-        n_treated = data.query(f"{treatment_indicator}==1").shape[0]
-        difference: NDArrayOfFloats = data[outcome].values.reshape(-1, 1)
-        self.n_units = data.shape[0]
-
-        self.selection_model = (
-            LogisticRegression(self.formula_ipw, data) if formula_ipw is not None else None
-        )
-        self.or_model = (
-            Ols(self.formula_or, data.query(f"{treatment_indicator}==0"))
-            if formula_or is not None
-            else None
-        )
-        preds: MaybeNDArrayOfFloats = self.or_model.predict(data) if self.or_model else None
-
-        # TODO: why is the design matrix identical?
-        X = (
-            self.or_model.get_design_matrix(data)
-            if self.or_model
-            else self.selection_model.get_design_matrix(data)
-        )
-
-        self._weights_treated = data[treatment_indicator].values.reshape(-1, 1)
-        self._weights_control = (
-            self.selection_model.predict_odds(data) * (1 - self._weights_treated)
-            if formula_ipw
-            else self._weights_treated
-        )
-        self._att_treated = self._weights_treated * self._get_treatment_diff_in_diff(
-            difference, preds
-        )
-        self._att_control = self._weights_control * self._get_control_diff_in_diff(
-            difference, preds
-        )
+        self._att_treated = self._weights_treated * self._outcome_treated
+        self._att_control = self._weights_control * self._outcome_control
         self._eta_control = self._att_control.mean() / self._weights_control.mean()
         self._eta_treated = self._att_treated.mean() / self._weights_treated.mean()
-
-        self.influence_function = self._get_if(difference, preds, X, n_treated)
+        self.influence_function = self._get_if()
 
     @property
     def att(self) -> float:
         return self._eta_treated - self._eta_control
 
+    def _get_alr_or_model(self, n: int, k: int) -> NDArrayOfFloats:
+        # TODO: careful here, you assume a certain structure of data.
+        # TODO: n and k should come from some place else
+        return (
+            n
+            * np.r_[
+                np.zeros((self._data.n_treated, k)),
+                self._outcome_model.asymptotic_linear_representation,
+            ]
+        )
+
+    def _get_if(self) -> NDArrayOfFloats:
+        return self._get_treatment_if() - self._get_control_if()
+
+    @property
+    def _if_treated_component_1(self) -> NDArrayOfFloats:
+
+        return self._att_treated - self._weights_treated * self._eta_treated
+
+    @property
+    def _if_control_component_1(self) -> NDArrayOfFloats:
+        return self._att_control - self._weights_control * self._eta_control
+
+    @property
+    def _if_control_component_2(self) -> NDArrayOfFloats:
+        alr = self._selection_model.score @ self._selection_model.vce
+        inner = self._data.outcome - self._eta_control
+        inner = inner if not self._estimate_or else inner - self._predictions
+        X = self._selection_model.get_design_matrix(self._data.data)
+        m2 = (self._weights_control * inner * X).mean(axis=0)
+        return (alr @ m2).reshape(-1, 1)
+
+    @property
+    def _if_control_component_3(self) -> NDArrayOfFloats:
+        X = self._outcome_model.get_design_matrix(self._data.data)
+        alr_or = self._get_alr_or_model(*X.shape)
+        return alr_or @ ((self._weights_control * X).mean(axis=0)).reshape(-1, 1)
+
+    @abstractmethod
+    def _get_treatment_if(self) -> NDArrayOfFloats:
+        ...
+
+    @abstractmethod
+    def _get_control_if(self) -> NDArrayOfFloats:
+        ...
+
     def standard_errors(self) -> float:
-        return np.std(self.influence_function) / np.sqrt(self.n_units)
+        return np.std(self.influence_function) / np.sqrt(self._data.n_units)
+
+
+class OrEstimator(BaseDrDid):
+    _estimate_ipw = False
+    _estimate_or = True
+
+    @property
+    def _weights_control(self) -> NDArrayOfFloats:
+        return self._data.treatment_status
+
+    @property
+    def _outcome_treated(self) -> NDArrayOfFloats:
+        return self._data.outcome
+
+    @property
+    def _outcome_control(self) -> NDArrayOfFloats:
+        return self._predictions
+
+    def _get_treatment_if(self) -> NDArrayOfFloats:
+        return self._if_treated_component_1 / self._weights_treated.mean()
+
+    def _get_control_if(self) -> NDArrayOfFloats:
+        return (
+            self._if_control_component_1 + self._if_control_component_3
+        ) / self._weights_control.mean()
+
+
+class IpwEstimator(BaseDrDid):
+    _estimate_ipw = True
+    _estimate_or = False
+
+    @property
+    def _weights_control(self) -> NDArrayOfFloats:
+        return self._selection_model.predict_odds(self._data.data) * (1 - self._weights_treated)
+
+    @property
+    def _outcome_treated(self) -> NDArrayOfFloats:
+        return self._data.outcome
+
+    @property
+    def _outcome_control(self) -> NDArrayOfFloats:
+        return self._data.outcome
+
+    def _get_treatment_if(self) -> NDArrayOfFloats:
+        return self._if_treated_component_1 / self._weights_treated.mean()
+
+    def _get_control_if(self) -> NDArrayOfFloats:
+        return (
+            self._if_control_component_1 + self._if_control_component_2
+        ) / self._weights_control.mean()
+
+
+class DrEstimator(BaseDrDid):
+    _estimate_ipw = True
+    _estimate_or = True
+
+    @property
+    def _weights_control(self) -> NDArrayOfFloats:
+        return self._selection_model.predict_odds(self._data.data) * (1 - self._weights_treated)
+
+    @property
+    def _outcome_treated(self) -> NDArrayOfFloats:
+        return self._data.outcome - self._predictions
+
+    @property
+    def _outcome_control(self) -> NDArrayOfFloats:
+        return self._data.outcome - self._predictions
+
+    def _get_treatment_if(self) -> NDArrayOfFloats:
+        X = self._outcome_model.get_design_matrix(self._data.data)
+        alr_or = self._get_alr_or_model(*X.shape)
+        return (
+            self._if_treated_component_1
+            - (alr_or @ (self._weights_treated * X).mean(axis=0)).reshape(-1, 1)
+        ) / self._weights_treated.mean()
+
+    def _get_control_if(self) -> NDArrayOfFloats:
+        return (
+            self._if_control_component_1
+            + self._if_control_component_2
+            - self._if_control_component_3
+        ) / self._weights_control.mean()
+
+
+class DrDidMethod(str, Enum):
+    dr = "dr"
+    ipw = "ipw"
+    oreg = "or"
+
+
+dr_did_models = {
+    DrDidMethod.dr: DrEstimator,
+    DrDidMethod.ipw: IpwEstimator,
+    DrDidMethod.oreg: OrEstimator,
+}

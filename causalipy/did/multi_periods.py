@@ -11,8 +11,7 @@ from scipy.stats import norm
 
 # First party
 from causalipy.custom_types import MaybeInt, NDArrayOfFloats
-from causalipy.did.doubly_robust import DoublyRobustDid
-from causalipy.did.doubly_robust_alt import DrDidMethod, dr_did_models
+from causalipy.did.doubly_robust import BaseDrDid, DrDidMethod, dr_did_models
 
 
 def simulate_data(
@@ -111,7 +110,7 @@ class MultiPeriodDid:
 
         combinations = ((g, t) for (g, t) in product(groups, time_periods))
 
-        def _estimate_model(group: int, late_tp: int) -> DoublyRobustDid:
+        def _estimate_model(group: int, late_tp: int) -> BaseDrDid:
             early_tp = group - 1 if group <= late_tp else late_tp - 1  # noqa
             data_query = "group in (0,@group)  and time_period in (@early_tp,@late_tp)"
             return dr_did_models[method](
