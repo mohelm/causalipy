@@ -234,16 +234,14 @@ class DrEstimatorAlt(BaseDrDid):
     def _outcome_control(self) -> NDArrayOfFloats:
         return self._data.outcome - self._predictions
 
-    @property
     def _get_treatment_if(self) -> NDArrayOfFloats:
         X = self._outcome_model.get_design_matrix(self._data.data)
         alr_or = self._get_alr_or_model(*X.shape)
         return (
-            self._get_treatment_if
+            self._if_treated_component_1
             - (alr_or @ (self._weights_treated * X).mean(axis=0)).reshape(-1, 1)
         ) / self._weights_treated.mean()
 
-    @property
     def _get_control_if(self) -> NDArrayOfFloats:
         return (
             self._if_control_component_1
