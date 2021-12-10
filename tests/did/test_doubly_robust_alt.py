@@ -5,7 +5,13 @@ from typing import NamedTuple
 import numpy as np
 
 # First party
-from causalipy.did.doubly_robust_alt import OrEstimator, IpwEstimator
+from causalipy.did.doubly_robust_alt import (
+    OrEstimator,
+    IpwEstimator,
+    DrEstimatorAlt,
+    OrEstimatorAlt,
+    IpwEstimatorAlt,
+)
 
 
 class ExpectedResult(NamedTuple):
@@ -18,7 +24,7 @@ def test_or_estimator(simulate_data_multi_period_did):
         simulate_data_multi_period_did,
         outcome="outcome",
         treatment_indicator="treatment_status",
-        formula_or="~control",
+        formula="~control",
     )
     expected_result = ExpectedResult(1.3139, 0.0412)
     np.testing.assert_almost_equal(out.att, expected_result.att, 4)
@@ -30,8 +36,41 @@ def test_ipw_estimator(simulate_data_multi_period_did):
         simulate_data_multi_period_did,
         outcome="outcome",
         treatment_indicator="treatment_status",
-        formula_ipw="~control",
+        formula="~control",
     )
     expected_result = ExpectedResult(1.2635, 0.0463)
     np.testing.assert_almost_equal(out.att, expected_result.att, 4)
     np.testing.assert_almost_equal(out.standard_errors(), expected_result.se, 4)
+
+
+def test_ipw_estimator_alt(simulate_data_multi_period_did):
+    out = IpwEstimatorAlt(
+        simulate_data_multi_period_did,
+        outcome="outcome",
+        treatment_indicator="treatment_status",
+        formula="~control",
+    )
+    expected_result = ExpectedResult(1.2635, 0.0463)
+    np.testing.assert_almost_equal(out.att, expected_result.att, 4)
+
+
+def test_or_estimator_alt(simulate_data_multi_period_did):
+    out = OrEstimatorAlt(
+        simulate_data_multi_period_did,
+        outcome="outcome",
+        treatment_indicator="treatment_status",
+        formula="~control",
+    )
+    expected_result = ExpectedResult(1.3139, 0.0412)
+    np.testing.assert_almost_equal(out.att, expected_result.att, 4)
+
+
+def test_dr_estimator_alt(simulate_data_multi_period_did):
+    out = DrEstimatorAlt(
+        simulate_data_multi_period_did,
+        outcome="outcome",
+        treatment_indicator="treatment_status",
+        formula="~control",
+    )
+    expected_result = ExpectedResult(1.2776, 0.0438)
+    np.testing.assert_almost_equal(out.att, expected_result.att, 4)

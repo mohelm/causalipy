@@ -1,10 +1,14 @@
+# Core Library
+from abc import ABC, abstractmethod
+from typing import ClassVar
+
 # Third party
 import numpy as np
 import pandas as pd
 
 # First party
 from causalipy.ols import Ols
-from causalipy.custom_types import NDArrayOfFloats
+from causalipy.custom_types import MaybeString, NDArrayOfFloats
 from causalipy.logistic_regression import LogisticRegression
 
 
@@ -54,6 +58,116 @@ class DataHandler:
         return self._data.shape[0]
 
 
+class BaseDrDid(ABC):
+
+    _estimate_ipw: ClassVar[bool]
+    _estimate_or: ClassVar[bool]
+
+    @property
+    def _predictions(self) -> NDArrayOfFloats:
+        return self._outcome_model.predict(self._data.data)
+
+    @property
+    def _prop_odds(self) -> NDArrayOfFloats:
+        return self._selection_model.predict_odds(self._data.data)
+
+    @property
+    def _weights_treated(self) -> NDArrayOfFloats:
+        return self._data.treatment_status
+
+    @property
+    @abstractmethod
+    def _weights_control(self) -> NDArrayOfFloats:
+        ...
+
+    @property
+    @abstractmethod
+    def _outcome_treated(self) -> NDArrayOfFloats:
+        ...
+
+    @property
+    @abstractmethod
+    def _outcome_control(self) -> NDArrayOfFloats:
+        ...
+
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        outcome: str = "Y",
+        treatment_indicator: str = "D",
+        time_period_indicator: str = "time_period",
+        formula: MaybeString = "~ 1",
+    ):
+        self._data = DataHandler(data, outcome, treatment_indicator, time_period_indicator)
+
+        if self._estimate_or:
+            self._formula = f"{outcome} {formula}"
+            self._outcome_model = Ols(self._formula, self._data.untreated_data)
+        if self._estimate_ipw:
+            self._formula = f"{treatment_indicator}  {formula}"
+            self._selection_model = LogisticRegression(self._formula, self._data.data)
+
+        self._att_treated = self._weights_treated * self._outcome_treated
+        self._att_control = self._weights_control * self._outcome_control
+        self._eta_control = self._att_control.mean() / self._weights_control.mean()
+        self._eta_treated = self._att_treated.mean() / self._weights_treated.mean()
+
+    @property
+    def att(self) -> float:
+        return self._eta_treated - self._eta_control
+
+
+class OrEstimatorAlt(BaseDrDid):
+    _estimate_ipw = False
+    _estimate_or = True
+
+    @property
+    def _weights_control(self) -> NDArrayOfFloats:
+        return self._data.treatment_status
+
+    @property
+    def _outcome_treated(self) -> NDArrayOfFloats:
+        return self._data.outcome
+
+    @property
+    def _outcome_control(self) -> NDArrayOfFloats:
+        return self._predictions
+
+
+class IpwEstimatorAlt(BaseDrDid):
+    _estimate_ipw = True
+    _estimate_or = False
+
+    @property
+    def _weights_control(self) -> NDArrayOfFloats:
+        return self._selection_model.predict_odds(self._data.data) * (1 - self._weights_treated)
+
+    @property
+    def _outcome_treated(self) -> NDArrayOfFloats:
+        return self._data.outcome
+
+    @property
+    def _outcome_control(self) -> NDArrayOfFloats:
+        return self._data.outcome
+
+
+class DrEstimatorAlt(BaseDrDid):
+    _estimate_ipw = True
+    _estimate_or = True
+
+    @property
+    def _weights_control(self) -> NDArrayOfFloats:
+        return self._selection_model.predict_odds(self._data.data) * (1 - self._weights_treated)
+
+    @property
+    def _outcome_treated(self) -> NDArrayOfFloats:
+        return self._data.outcome - self._predictions
+
+    @property
+    def _outcome_control(self) -> NDArrayOfFloats:
+        return self._data.outcome - self._predictions
+
+
 class OrEstimator:
     def __init__(
         self,
@@ -64,8 +178,9 @@ class OrEstimator:
         formula_or: str = "~ 1",
     ):
 
-        self._formula = f"{outcome} {formula_or}"
         self._data = DataHandler(data, outcome, treatment_indicator, time_period_indicator)
+
+        self._formula = f"{outcome} {formula_or}"
         self._outcome_model = Ols(self._formula, self._data.untreated_data)
         X = self._outcome_model.get_design_matrix(self._data.data)
 
@@ -120,8 +235,9 @@ class IpwEstimator:
         time_period_indicator: str = "time_period",
         formula_ipw: str = "~ 1",
     ):
-        self._formula = f"{treatment_indicator}  {formula_ipw}"
         self._data = DataHandler(data, outcome, treatment_indicator, time_period_indicator)
+
+        self._formula = f"{treatment_indicator}  {formula_ipw}"
         self._selection_model = LogisticRegression(self._formula, self._data.data)
         X = self._selection_model.get_design_matrix(self._data.data)
 
