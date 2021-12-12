@@ -112,7 +112,7 @@ class MultiPeriodDid:
 
         def _estimate_model(group: int, late_tp: int) -> BaseDrDid:
             early_tp = group - 1 if group <= late_tp else late_tp - 1  # noqa
-            data_query = "group in (0,@group)  and time_period in (@early_tp,@late_tp)"
+            data_query = f"`{group_indiciator}` in (0,@group)  and `{time_period_indicator}` in (@early_tp,@late_tp)"
             return dr_did_models[method](
                 data.query(data_query), outcome, treatment_indicator, time_period_indicator, formula
             )

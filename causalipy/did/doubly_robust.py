@@ -29,14 +29,15 @@ class DataHandler:
         self._data = self._prepare_data(data, late_period)
 
     def _prepare_data(self, data: pd.DataFrame, late_period: int) -> pd.DataFrame:
-        return data.query(f"{self._time_period_indicator} == @late_period").assign(
-            outcome=lambda df: df[self._outcome].values
+        dd = {
+            f"{self._outcome}": lambda df: df[self._outcome].values
             - data.loc[data[self._time_period_indicator] != late_period, self._outcome].values
-        )
+        }
+        return data.query(f"`{self._time_period_indicator}` == @late_period").assign(**dd)
 
     @property
     def untreated_data(self) -> pd.DataFrame:
-        return self._data.query(f"{self._treatment_indicator} == 0")
+        return self._data.query(f"`{self._treatment_indicator}` == 0")
 
     @property
     def outcome(self) -> NDArrayOfFloats:
@@ -52,7 +53,7 @@ class DataHandler:
 
     @property
     def n_treated(self) -> int:
-        return self.treatment_status.sum()
+        return int(self.treatment_status.sum())
 
     @property
     def n_units(self) -> int:
@@ -102,11 +103,13 @@ class BaseDrDid(ABC):
         self._data = DataHandler(data, outcome, treatment_indicator, time_period_indicator)
 
         if self._estimate_or:
-            self._formula = f"{outcome} {formula}"
-            self._outcome_model = Ols(self._formula, self._data.untreated_data)
+            self._formula_outcome_model = f"{outcome} {formula}"
+            self._outcome_model = Ols(self._formula_outcome_model, self._data.untreated_data)
         if self._estimate_ipw:
-            self._formula = f"{treatment_indicator}  {formula}"
-            self._selection_model = LogisticRegression(self._formula, self._data.data)
+            self._formula_treatment_status_model = f"{treatment_indicator}  {formula}"
+            self._selection_model = LogisticRegression(
+                self._formula_treatment_status_model, self._data.data
+            )
 
         self._att_treated = self._weights_treated * self._outcome_treated
         self._att_control = self._weights_control * self._outcome_control
