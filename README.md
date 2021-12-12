@@ -4,6 +4,19 @@ Causal Methods implemented in Python.
 
 ## Installation
 
+Install via
+
+```
+pip install causalipy
+```
+
+It might make sense to add the py-arrow dependency (which is currently required
+for the example):
+
+```
+pip install pyarrow
+```
+
 ## Example
 
 To run a version of the multi-period difference-in-difference estimator as
@@ -11,6 +24,9 @@ proposed by Callaway and Sant’Anna (2020)  (this requires additionally pyarrow
 `pip install pyarrow` - to be installed currently):
 
 ```python
+from causalipy.did.multi_periods import MultiPeriodDid
+import pandas as pd
+
 url = "https://github.com/mohelm/causalipy-datasets/raw/main/mpdta-sample.feather"
 data = pd.read_feather(url)
 

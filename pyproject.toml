@@ -1,8 +1,11 @@
 [tool.poetry]
 name = "causalipy"
-version = "0.1.0"
-description = "Econometrics for Python"
+version = "0.1.1"
+description = "Causal Methods Implemented in Python"
 authors = ["Moritz Helm <mohelm84@gmail.com>"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/mohelm/causalipy"
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.11"
