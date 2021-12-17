@@ -6,21 +6,21 @@ Causal Methods implemented in Python.
 
 Install via
 
-```
+```bash
 pip install causalipy
 ```
 
 It might make sense to add the py-arrow dependency (which is currently required
 for the example):
 
-```
+```bash
 pip install pyarrow
 ```
 
 ## Example
 
 To run a version of the multi-period difference-in-difference estimator as
-proposed by Callaway and Sant’Anna (2020)  (this requires additionally pyarrow  - e.g. via
+proposed by Callaway and Sant’Anna (2020) (this requires additionally pyarrow - e.g. via
 `pip install pyarrow` - to be installed currently):
 
 ```python
@@ -48,4 +48,3 @@ This will give:
 ## License
 
 This project is licensed under the terms of the MIT license.
-

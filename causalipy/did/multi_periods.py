@@ -19,28 +19,34 @@ def simulate_data(
     n_untreated_units: int = 4000,
     n_time_periods: int = 4,
     seed: MaybeInt = None,
+    remove_initial_period: bool = True,
+    y0_error_variance: float = 1,
+    y1_error_variance: float = 1,
+    group_effect_variance: float = 1,
 ) -> pd.DataFrame:
     """
-    Simulate a dataset to demonstrate multi-period analysis.
-
+    Simulate a dataset for multi-period diff-in-diff as in
 
     """
+    rng = np.random.default_rng(seed)
+
     time_periods = np.arange(n_time_periods) + 1
     n_total_units = n_treated_units + n_untreated_units
     n_total_obs_treated = n_time_periods * n_treated_units
     n_total_obs_untreated = n_time_periods * n_untreated_units
 
-    rng = np.random.default_rng(seed)
-
-    def _get_controls(mean: int, group_size: int) -> NDArrayOfFloats:
+    def _get_controls(mean: float, group_size: int) -> NDArrayOfFloats:
         return np.repeat(rng.normal(mean, 1, size=group_size), n_time_periods)
 
     controls = np.r_[_get_controls(0, n_untreated_units), _get_controls(1, n_treated_units)]
 
-    error = rng.normal(0, 1, (n_total_units) * n_time_periods)
+    error = rng.normal(0, y0_error_variance, n_total_units * n_time_periods)
 
     theta = np.repeat(time_periods, n_total_units)
 
+    # A group here identifies when a unit was treated. A unit can be treated in
+    # each of the time periods supplied in which case the group's "group value" is
+    # equal to the time period. For the untreated the group value is zero.
     group = np.append(
         np.repeat(
             rng.choice(time_periods, n_treated_units, True),
@@ -49,7 +55,16 @@ def simulate_data(
         np.zeros(n_total_obs_untreated),
     )
 
-    y0 = np.repeat(time_periods, n_total_units) * controls + theta + rng.normal(group, 1) + error
+    # This is the outcome under no treatment. In general, the outcome has a
+    # group component that leads to a permanent (expected shift in levels), and
+    # a time component that consists of a deterministic trend (theta) and an
+    # interaction with the control value.
+    y0 = (
+        np.repeat(time_periods, n_total_units) * controls
+        + theta
+        + rng.normal(group, group_effect_variance)
+        + error
+    )
 
     time_period = np.tile(time_periods, n_total_units)
     treatment_status = np.where(
@@ -57,6 +72,11 @@ def simulate_data(
         1,
         0,
     )
+
+    # This is the outcome under treatment. For the treated groups, the
+    # treatment effect is 1 in the initial treatment period and increases for every
+    # period thereafter. For the control group of the never-treated we assign a
+    # value of zero to the treatment effect.
     y1 = np.r_[
         y0[:n_total_obs_treated]
         + np.where(
@@ -64,29 +84,26 @@ def simulate_data(
             time_period[:n_total_obs_treated] - group[:n_total_obs_treated] + 1,
             0,
         )
-        + rng.normal(0, 1, n_total_obs_treated)
+        + rng.normal(0, y1_error_variance, n_total_obs_treated)
         - error[:n_total_obs_treated],
-        np.empty(n_total_obs_untreated) * np.NaN,
+        np.empty(n_total_obs_untreated) * 0,
     ]
 
     outcome_observed = np.where(treatment_status == 1, y1, y0)
     unit_id = np.r_[np.repeat(np.arange(n_total_units), n_time_periods)]
 
-    # TODO: what is going on with this data+1
-    return (
-        pd.DataFrame(
-            {
-                "treatment_status": treatment_status,
-                "outcome": outcome_observed,
-                "control": controls,
-                "time_period": time_period,
-                "unit_id": unit_id,
-                "group": group,
-            }
-        )
-        .query("group!=1")
-        .sort_values(["unit_id", "time_period"])
-    )
+    simulated_data = pd.DataFrame(
+        {
+            "D": treatment_status,
+            "Y": outcome_observed,
+            "control": controls,
+            "time_period": time_period,
+            "unit_id": unit_id,
+            "group": group,
+        }
+    ).sort_values(["unit_id", "time_period"])
+
+    return simulated_data.query("group!=1") if remove_initial_period else simulated_data
 
 
 class MultiPeriodDid:
