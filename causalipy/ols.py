@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Core Library
-from typing import Union, cast
+from dataclasses import dataclass
 
 # Third party
 import numpy as np
@@ -11,6 +11,14 @@ from patsy.design_info import DesignInfo
 
 # First party
 from causalipy.custom_types import NDArrayOfFloats
+
+
+def isa(*types):
+    """
+    Creates a function checking if its argument
+    is of any of given types.
+    """
+    return lambda x: isinstance(x, types)
 
 
 def cr_vce(
@@ -34,6 +42,16 @@ def cr_vce(
 
     bread = np.linalg.inv(X_ordered.T @ X_ordered)
     return bread @ (b_clu) @ bread
+
+
+@dataclass
+class ClusteredSeConfig:
+    cluster: pd.Series
+    cluster_correction: bool = True
+    small_sample_correct: bool = True
+
+
+is_clustered_se_config = isa(ClusteredSeConfig)
 
 
 def hew_vce(X: NDArrayOfFloats, eps: NDArrayOfFloats) -> NDArrayOfFloats:
@@ -90,16 +108,16 @@ class Ols:
         res_var = self._res.T @ self._res / (self.n_obs - self.n_vars)
         return inv * res_var
 
-    def _cr_vce(
-        self,
-        cluster_indicator: pd.Series | NDArrayOfFloats,
-        ssc_sample: bool = False,
-        ssc_cluster: bool = False,
-    ) -> NDArrayOfFloats:
-        correction_small_sample = (self.n_obs - 1) / (self.n_obs - self.n_vars) if ssc_sample else 1
+    def _cr_vce(self, config: ClusteredSeConfig) -> NDArrayOfFloats:
+        cluster_indicator = config.cluster
+        correction_small_sample = (
+            (self.n_obs - 1) / (self.n_obs - self.n_vars) if config.small_sample_correct else 1
+        )
         # NUNIQUE will not work on NDArrayOfFloats
         correction_cluster = (
-            (cluster_indicator.nunique() / (cluster_indicator.nunique() - 1)) if ssc_cluster else 1
+            (cluster_indicator.nunique() / (cluster_indicator.nunique() - 1))
+            if config.cluster_correction
+            else 1
         )
         # Cluster-robust variance estimate
         sorter = cluster_indicator.argsort()
@@ -115,17 +133,11 @@ class Ols:
         bread = np.linalg.inv(X_ordered.T @ X_ordered)
         return (bread @ (b_clu) @ bread) * correction_cluster * correction_small_sample
 
-    def get_standard_errors(
-        self,
-        method: str | None = None,
-        cluster_indicator: pd.Series | NDArrayOfFloats | None = None,
-        ssc_sample: bool = False,
-        ssc_cluster: bool = False,
-    ) -> NDArrayOfFloats:
-        if method == "cluster":
-            cluster_indicator = cast(Union[pd.Series, NDArrayOfFloats], cluster_indicator)
-            vcm = self._cr_vce(cluster_indicator, ssc_sample, ssc_cluster)
-        if method is None:
+    def get_standard_errors(self, config: None | ClusteredSeConfig = None) -> NDArrayOfFloats:
+
+        if is_clustered_se_config(config):
+            vcm = self._cr_vce(config)  # type: ignore
+        else:
             vcm = self._hom_vce()
 
         return np.sqrt(np.diag(vcm))
