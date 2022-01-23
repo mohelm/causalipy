@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+# Core Library
+from typing import Union, cast
+
 # Third party
 import numpy as np
 import pandas as pd
@@ -6,6 +11,47 @@ from patsy.design_info import DesignInfo
 
 # First party
 from causalipy.custom_types import NDArrayOfFloats
+
+
+def cr_vce(
+    X: NDArrayOfFloats,
+    eps: NDArrayOfFloats,
+    cluster_indicator: NDArrayOfFloats,
+    correction: int = 1,
+) -> NDArrayOfFloats:
+    # Cluster-robust variance estimate
+    # Correction: 1 - Liang and Zeger (1986)
+    _, k = X.shape
+    sorter = cluster_indicator.argsort()
+    X_ordered, eps_ordered = X[sorter, :], eps[sorter]
+    _, clu_starts = np.unique(cluster_indicator[sorter], return_index=True)
+    clu_ends = np.append(clu_starts[1:], len(X))
+    b_clu = np.zeros((k, k))
+    for clu_start, clu_end in zip(clu_starts, clu_ends):
+        X_g = X_ordered[clu_start:clu_end, :]
+        eps_g = eps_ordered[clu_start:clu_end] * np.sqrt(correction)
+        b_clu += X_g.T @ np.kron(eps_g[:, None], eps_g) @ X_g
+
+    bread = np.linalg.inv(X_ordered.T @ X_ordered)
+    return bread @ (b_clu) @ bread
+
+
+def hew_vce(X: NDArrayOfFloats, eps: NDArrayOfFloats) -> NDArrayOfFloats:
+    # Huber-White Variance-Covariance Matrix
+    # TODO: Consider implementing correction factors
+    n, k = X.shape
+    bread = np.linalg.inv(X.T @ X)
+    vce_eps = np.zeros((n, n))
+    np.fill_diagonal(vce_eps, eps ** 2)
+    correction = n / (n - k)
+    return correction * (bread @ (X.T @ vce_eps @ X) @ bread)
+
+
+def hom_vce(X: NDArrayOfFloats, res: NDArrayOfFloats):
+    n, k = X.shape
+    inv = np.linalg.inv(X.T @ X)
+    res_var = res @ res / (n - k)
+    return inv * res_var
 
 
 def _solve_ols(y: NDArrayOfFloats, X: NDArrayOfFloats) -> tuple[NDArrayOfFloats, NDArrayOfFloats]:
@@ -18,8 +64,10 @@ def _solve_ols(y: NDArrayOfFloats, X: NDArrayOfFloats) -> tuple[NDArrayOfFloats,
 class Ols:
     def __init__(self, formula: str, data: pd.DataFrame):
         y_dmat, X_dmat = dmatrices(formula, data=data)
+        self._x_dmat, self._y_dmat = X_dmat, y_dmat
+        self.n_obs, self.n_vars = X_dmat.shape
 
-        self.coefficients, _ = _solve_ols(y_dmat, X_dmat)
+        self.coefficients, self._res = _solve_ols(y_dmat, X_dmat)
         self._x_design_info: DesignInfo = X_dmat.design_info
 
         self.residuals = X_dmat @ self.coefficients
@@ -36,3 +84,48 @@ class Ols:
 
     def predict(self, data: pd.DataFrame) -> NDArrayOfFloats:
         return (self.get_design_matrix(data) @ self.coefficients).reshape(-1, 1)
+
+    def _hom_vce(self):
+        inv = np.linalg.inv(self._x_dmat.T @ self._x_dmat)
+        res_var = self._res.T @ self._res / (self.n_obs - self.n_vars)
+        return inv * res_var
+
+    def _cr_vce(
+        self,
+        cluster_indicator: pd.Series | NDArrayOfFloats,
+        ssc_sample: bool = False,
+        ssc_cluster: bool = False,
+    ) -> NDArrayOfFloats:
+        correction_small_sample = (self.n_obs - 1) / (self.n_obs - self.n_vars) if ssc_sample else 1
+        # NUNIQUE will not work on NDArrayOfFloats
+        correction_cluster = (
+            (cluster_indicator.nunique() / (cluster_indicator.nunique() - 1)) if ssc_cluster else 1
+        )
+        # Cluster-robust variance estimate
+        sorter = cluster_indicator.argsort()
+        X_ordered, eps_ordered = self._x_dmat[sorter, :], self._res[sorter]
+        _, clu_starts = np.unique(cluster_indicator[sorter], return_index=True)
+        clu_ends = np.append(clu_starts[1:], len(self._x_dmat))
+        b_clu = np.zeros((self.n_vars, self.n_vars))
+        for clu_start, clu_end in zip(clu_starts, clu_ends):
+            X_g = X_ordered[clu_start:clu_end, :]
+            eps_g = eps_ordered[clu_start:clu_end]
+            b_clu += X_g.T @ (eps_g @ eps_g.T) @ X_g
+
+        bread = np.linalg.inv(X_ordered.T @ X_ordered)
+        return (bread @ (b_clu) @ bread) * correction_cluster * correction_small_sample
+
+    def get_standard_errors(
+        self,
+        method: str | None = None,
+        cluster_indicator: pd.Series | NDArrayOfFloats | None = None,
+        ssc_sample: bool = False,
+        ssc_cluster: bool = False,
+    ) -> NDArrayOfFloats:
+        if method == "cluster":
+            cluster_indicator = cast(Union[pd.Series, NDArrayOfFloats], cluster_indicator)
+            vcm = self._cr_vce(cluster_indicator, ssc_sample, ssc_cluster)
+        if method is None:
+            vcm = self._hom_vce()
+
+        return np.sqrt(np.diag(vcm))
