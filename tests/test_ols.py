@@ -1,16 +1,10 @@
 # Third party
-import pandas as pd
+import numpy as np
 import pytest
 from numpy.testing import assert_array_almost_equal
 
 # First party
 from causalipy.ols import Ols, ClusteredSeConfig
-
-
-@pytest.fixture
-def iris_data():
-    path = "/Users/moritz.helm/.cache/causalipy/iris.csv"  # TODO fix this pat
-    return pd.read_csv(path).rename(columns=lambda col: col.replace(".", "_"))
 
 
 @pytest.mark.parametrize(
@@ -27,4 +21,4 @@ def test_iris_clustered_standard_errors(iris_data, config, expected_results):
     config = ClusteredSeConfig(iris_data[config[0]], config[1], config[2])
     se = ols.get_standard_errors(config)
 
-    assert_array_almost_equal(se, expected_results)
+    assert_array_almost_equal(se, np.array(expected_results).reshape(-1, 1))
