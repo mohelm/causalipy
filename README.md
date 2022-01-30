@@ -48,3 +48,30 @@ This will give:
 ## License
 
 This project is licensed under the terms of the MIT license.
+
+
+## TODO:
+
+Leg 1:
+- OLS standard errors
+  - Huber-White Clusters
+  - Clustered standard errors
+    - Question: what is the `fixef.K`
+  - Homogenous standard errors
+- Fix effect estimator (for OLS) with standard errors
+
+
+
+- Think about how to handle test datasets and what to use?
+
+Leg 2:
+Work on interface
+
+Release
+
+Leg 3:
+Add some more DiD stuff
+
+RDD/ Synthetic control
+
+

@@ -22,3 +22,9 @@ def simulate_data_multi_period_did():
     for col in ["treatment_status", "time_period", "group"]:
         data[col] = data[col].astype(int)
     return data.query("time_period in (3, 4)")
+
+
+@pytest.fixture
+def iris_data():
+    path = "/Users/moritz.helm/.cache/causalipy/iris.csv"  # TODO fix this pat
+    return pd.read_csv(path).rename(columns=lambda col: col.replace(".", "_"))

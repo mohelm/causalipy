@@ -140,4 +140,4 @@ class Ols:
         else:
             vcm = self._hom_vce()
 
-        return np.sqrt(np.diag(vcm))
+        return np.sqrt(np.diag(vcm)).reshape(-1, 1)
